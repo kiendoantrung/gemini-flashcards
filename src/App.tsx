@@ -34,6 +34,22 @@ function App() {
         ) : (
           <>
             <div className="mb-8">
+              <div className="py-4">
+                <p className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 font-bold text-lg md:text-xl lg:text-2xl text-center animate-gradient">
+                  Because Who Needs a Cram Session
+                </p>
+                <p className="text-transparent bg-clip-text bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 font-bold text-lg md:text-xl lg:text-2xl text-center mt-2 animate-gradient">
+                  When You've Got Genius in Your Pocket?
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <CreateDeck onDeckCreated={handleDeckCreated} />
+              <FileUploadDeck onDeckCreated={handleDeckCreated} />
+            </div>
+            {/* make the deck list shimmer when loading */}
+            <div className="shimmer">
+            <div className="mb-8">
               <h2 className="text-3xl font-bold text-gray-900 mb-4">
                 Study Decks
               </h2>
@@ -42,11 +58,8 @@ function App() {
                 and reveal the answers.
               </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              <CreateDeck onDeckCreated={handleDeckCreated} />
-              <FileUploadDeck onDeckCreated={handleDeckCreated} />
+              <DeckList decks={decks} onSelectDeck={setSelectedDeck} />
             </div>
-            <DeckList decks={decks} onSelectDeck={setSelectedDeck} />
           </>
         )}
       </main>
