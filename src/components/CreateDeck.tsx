@@ -9,6 +9,7 @@ interface CreateDeckProps {
 
 export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
   const [topic, setTopic] = useState('');
+  const [numQuestions, setNumQuestions] = useState(10);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -25,7 +26,7 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
 
     const attemptGeneration = async (attempt: number): Promise<void> => {
       try {
-        const deck = await generateDeck(topic);
+        const deck = await generateDeck(topic, numQuestions);
         onDeckCreated(deck);
         setTopic('');
       } catch (err) {
@@ -41,8 +42,6 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
 
     try {
       await attemptGeneration(0);
-    } catch (err) {
-      // Final error handling if all retries failed
     } finally {
       setIsLoading(false);
     }
@@ -67,6 +66,24 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder="Enter a topic (e.g., 'Basic Python Concepts')"
+            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            disabled={isLoading}
+          />
+        </div>
+        <div>
+          <label
+            htmlFor="numQuestions"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
+            Number of Questions
+          </label>
+          <input
+            type="number"
+            id="numQuestions"
+            min="1"
+            max="20"
+            value={numQuestions}
+            onChange={(e) => setNumQuestions(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
             className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             disabled={isLoading}
           />

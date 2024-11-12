@@ -31,10 +31,10 @@ export async function extractTextFromFile(file: File): Promise<string> {
   return await file.text();
 }
 
-export async function generateQAFromText(text: string): Promise<Array<Omit<Flashcard, 'id'>>> {
+export async function generateQAFromText(text: string, numQuestions: number = 10): Promise<Array<Omit<Flashcard, 'id'>>> {
   const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
-  const prompt = `Create 5-7 flashcard questions and answers from this text. 
+  const prompt = `Create ${numQuestions} flashcard questions and answers from this text. 
     Return only a JSON array with objects in this format, with no additional text or formatting:
     [
       { "front": "Question about the content", "back": "Answer from the content" }
@@ -60,8 +60,8 @@ export async function generateQAFromText(text: string): Promise<Array<Omit<Flash
     let cards;
     try {
       cards = JSON.parse(responseText);
-    } catch (jsonError) {
-      throw new Error(`JSON parsing error after cleaning: ${jsonError.message}`);
+    } catch (jsonError: unknown) {
+      throw new Error(`JSON parsing error after cleaning: ${(jsonError as Error).message}`);
     }
     
     if (!Array.isArray(cards)) {
@@ -71,7 +71,7 @@ export async function generateQAFromText(text: string): Promise<Array<Omit<Flash
     return cards.filter(card => 
       card && typeof card.front === 'string' && typeof card.back === 'string'
     );
-  } catch (error) {
-    throw new Error(`Failed to generate questions from content: ${error.message}`);
+  } catch (error: unknown) {
+    throw new Error(`Failed to generate questions from content: ${(error as Error).message}`);
   }
 }

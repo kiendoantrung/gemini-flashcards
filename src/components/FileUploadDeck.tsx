@@ -10,6 +10,7 @@ interface FileUploadDeckProps {
 export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [numQuestions, setNumQuestions] = useState(10);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -24,7 +25,7 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
       const text = await extractTextFromFile(file);
       
       // Generate QA pairs using AI
-      const cards = await generateQAFromText(text);
+      const cards = await generateQAFromText(text, numQuestions);
       
       if (cards.length === 0) {
         throw new Error('No valid question-answer pairs found in the file');
@@ -60,6 +61,20 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
         Create Deck from File
       </h2>
       <div className="space-y-4">
+        <div className="flex items-center gap-4 mb-4">
+          <label className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Number of questions:</span>
+            <input
+              type="number"
+              min="1"
+              max="20"
+              value={numQuestions}
+              onChange={(e) => setNumQuestions(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+              className="w-20 px-2 py-1 border rounded-lg"
+              disabled={isLoading}
+            />
+          </label>
+        </div>
         <div className="flex items-center justify-center w-full">
           <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
             <div className="flex flex-col items-center justify-center pt-5 pb-6">

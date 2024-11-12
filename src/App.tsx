@@ -40,8 +40,10 @@ function App() {
                 and reveal the answers.
               </p>
             </div>
-            <CreateDeck onDeckCreated={handleDeckCreated} />
-            <FileUploadDeck onDeckCreated={handleDeckCreated} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <CreateDeck onDeckCreated={handleDeckCreated} />
+              <FileUploadDeck onDeckCreated={handleDeckCreated} />
+            </div>
             <DeckList decks={decks} onSelectDeck={setSelectedDeck} />
           </>
         )}
