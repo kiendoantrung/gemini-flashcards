@@ -5,7 +5,7 @@ import type { Flashcard } from '../types/flashcard';
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GOOGLE_AI_KEY);
 
 // Set the workerSrc to a CDN version of the worker script
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.0.279/pdf.worker.min.js'
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
 
 export async function extractTextFromFile(file: File): Promise<string> {
   if (file.type === 'application/pdf') {
