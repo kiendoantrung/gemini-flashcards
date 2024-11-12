@@ -11,7 +11,7 @@ export function FlashCard({ card, showAnswer = false }: FlashCardProps) {
 
   return (
     <div
-      className="relative w-full h-64 cursor-pointer perspective-1000"
+      className="relative w-full h-64 cursor-pointer perspective-1000 group"
       onClick={() => setIsFlipped(!isFlipped)}
     >
       <div
@@ -20,7 +20,7 @@ export function FlashCard({ card, showAnswer = false }: FlashCardProps) {
         }`}
       >
         {/* Front */}
-        <div className="absolute w-full h-full backface-hidden">
+        <div className="absolute w-full h-full backface-hidden transition-all duration-300 group-hover:shadow-lg">
           <div className="w-full h-full p-6 bg-white rounded-xl shadow-lg flex items-center justify-center">
             <p className="text-xl text-gray-800 font-medium text-center">
               {card.front}
@@ -29,7 +29,7 @@ export function FlashCard({ card, showAnswer = false }: FlashCardProps) {
         </div>
 
         {/* Back */}
-        <div className="absolute w-full h-full backface-hidden rotate-y-180">
+        <div className="absolute w-full h-full backface-hidden rotate-y-180 transition-all duration-300 group-hover:shadow-lg">
           <div className="w-full h-full p-6 bg-indigo-50 rounded-xl shadow-lg flex items-center justify-center">
             <p className="text-xl text-gray-800 font-medium text-center">
               {card.back}

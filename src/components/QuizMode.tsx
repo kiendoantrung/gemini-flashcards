@@ -57,7 +57,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
     return (
       <div className="max-w-2xl mx-auto text-center">
         <h2 className="text-3xl font-bold text-gray-900 mb-4">Quiz Complete!</h2>
-        <div className="bg-white rounded-xl shadow-lg p-8 mb-6">
+        <div className="bg-white/80 backdrop-blur-md rounded-xl shadow-lg p-8 mb-6 border border-white/20">
           <div className="text-6xl font-bold mb-4">
             {percentage}%
           </div>

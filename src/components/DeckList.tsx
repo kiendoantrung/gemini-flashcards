@@ -13,7 +13,7 @@ export function DeckList({ decks, onSelectDeck }: DeckListProps) {
       {decks.map((deck) => (
         <div
           key={deck.id}
-          className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-200 cursor-pointer"
+          className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer transform hover:-translate-y-1 hover:bg-gradient-to-br hover:from-white hover:to-indigo-50"
           onClick={() => onSelectDeck(deck)}
         >
           <div className="p-6">
