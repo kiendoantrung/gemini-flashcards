@@ -12,16 +12,16 @@ const genAI = new GoogleGenerativeAI(API_KEY);
 export async function generateDeck(topic: string, numQuestions: number = 10): Promise<Deck> {
   const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
-  const prompt = `Create ${numQuestions} flashcards about "${topic}". 
-    Return a JSON object with the following structure:
-    {
-      "title": "Topic Title",
-      "description": "Brief description of the topic",
-      "cards": [
-        { "front": "Question", "back": "Answer" }
-      ]
-    }
-    Include clear, concise questions and answers.`;
+  const prompt = `Create a set of flashcards about "${topic}". 
+  Return a JSON object with the following structure:
+  {
+    "title": "Topic Title",
+    "description": "Brief description of the topic",
+    "cards": [
+      { "front": "Question", "back": "Answer" }
+    ]
+  }
+  Include ${numQuestions} cards with clear, concise questions and answers.`;
 
   const result = await model.generateContent(prompt);
   const response = await result.response;
