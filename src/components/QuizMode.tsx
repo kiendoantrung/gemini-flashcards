@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { RotateCcw, CheckCircle, XCircle } from 'lucide-react';
 import type { Deck, QuizAnswer } from '../types/flashcard';
 

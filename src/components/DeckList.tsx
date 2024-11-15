@@ -1,19 +1,20 @@
-import React from 'react';
 import { BookOpen } from 'lucide-react';
 import type { Deck } from '../types/flashcard';
 
 interface DeckListProps {
   decks: Deck[];
   onSelectDeck: (deck: Deck) => void;
+  onUpdateDeck: (deckId: string, updates: Partial<Deck>) => void;
+  onDeleteDeck: (deckId: string) => void;
 }
 
-export function DeckList({ decks, onSelectDeck }: DeckListProps) {
+export function DeckList({ decks, onSelectDeck, onUpdateDeck, onDeleteDeck }: DeckListProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {decks.map((deck) => (
         <div
           key={deck.id}
-          className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer transform hover:-translate-y-1 hover:bg-gradient-to-br hover:from-white hover:to-indigo-50"
+          className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer transform hover:-translate-y-1 hover:bg-gradient-to-br from-white via-white to-indigo-50/30"
           onClick={() => onSelectDeck(deck)}
         >
           <div className="p-6">
@@ -27,6 +28,29 @@ export function DeckList({ decks, onSelectDeck }: DeckListProps) {
               {deck.title}
             </h3>
             <p className="text-gray-600">{deck.description}</p>
+            <div className="mt-4 flex justify-end space-x-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteDeck(deck.id);
+                }}
+                className="text-red-600 hover:text-red-800"
+              >
+                Delete
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const newTitle = prompt('Enter new title:', deck.title);
+                  if (newTitle) {
+                    onUpdateDeck(deck.id, { title: newTitle });
+                  }
+                }}
+                className="text-blue-600 hover:text-blue-800"
+              >
+                Edit
+              </button>
+            </div>
           </div>
         </div>
       ))}

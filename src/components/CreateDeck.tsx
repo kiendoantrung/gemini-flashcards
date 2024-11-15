@@ -48,7 +48,7 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-md p-6 mb-8">
+    <div className="bg-white rounded-xl shadow-sm border p-6">
       <h2 className="text-xl font-semibold text-gray-800 mb-4">
         Create New Deck
       </h2>
