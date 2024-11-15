@@ -18,45 +18,15 @@ export async function loginWithGoogle() {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
-        // Thêm các scope để lấy thông tin profile từ Google
-        scopes: 'email profile'
+        redirectTo: `${window.location.origin}/auth/callback`
       }
     });
 
     if (error) throw error;
-
-    // Sau khi đăng nhập OAuth thành công, kiểm tra và tạo user profile
-    const user = await getCurrentUser();
-    if (user.data.user) {
-      // Kiểm tra xem user đã có trong bảng users chưa
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select()
-        .eq('id', user.data.user.id)
-        .single();
-
-      if (!existingUser) {
-        // Nếu chưa có, tạo mới user profile
-        const { error: profileError } = await supabase
-          .from('users')
-          .insert([
-            {
-              id: user.data.user.id,
-              email: user.data.user.email,
-              name: user.data.user.user_metadata.full_name || user.data.user.email,
-              avatar_url: user.data.user.user_metadata.avatar_url
-            }
-          ]);
-
-        if (profileError) throw profileError;
-      }
-    }
-
     return { url: data.url };
   } catch (error) {
     console.error('Google login error:', error);
-    return { user: null, error: error instanceof Error ? error.message : 'Login failed' };
+    return { error: error instanceof Error ? error.message : 'Login failed' };
   }
 }
 
