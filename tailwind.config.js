@@ -22,7 +22,10 @@ export default {
             'background-position': 'right center'
           },
         },
-      }
+      },
+      backgroundImage: {
+        'gradient-text': 'linear-gradient(to right, var(--tw-gradient-stops))',
+      },
     },
   },
   plugins: [],
