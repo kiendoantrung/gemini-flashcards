@@ -12,6 +12,7 @@ import { supabase } from './services/supabase';
 import { Avatar } from './components/Avatar';
 import { ProfileEditor } from './components/ProfileEditor';
 import { CreateDeckModal } from './components/CreateDeckModal';
+import { AuthCallback } from './components/AuthCallback';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -107,6 +108,11 @@ function App() {
       console.error('Failed to delete deck:', error);
     }
   };
+
+  // Kiểm tra nếu đang ở trang callback
+  if (window.location.pathname === '/auth/callback') {
+    return <AuthCallback />;
+  }
 
   if (!isAuthenticated) {
     return (
