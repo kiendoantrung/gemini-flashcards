@@ -14,7 +14,7 @@ export function DeckList({ decks, onSelectDeck, onUpdateDeck, onDeleteDeck }: De
       {decks.map((deck) => (
         <div
           key={deck.id}
-          className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer transform hover:-translate-y-1 hover:bg-gradient-to-br from-white via-white to-indigo-50/30"
+          className="bg-white/90 backdrop-blur-sm rounded-xl shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer transform hover:-translate-y-1 hover:bg-gradient-to-br from-white via-white to-indigo-50/30 border border-white/20"
           onClick={() => onSelectDeck(deck)}
         >
           <div className="p-6">

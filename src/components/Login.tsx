@@ -22,6 +22,7 @@ export function Login({ onLogin, onError, onToggleForm }: LoginProps) {
     const response = await loginWithEmail(email, password);
     if (response.error) {
       setError(response.error);
+      onError(response.error);
     } else {
       onLogin();
     }
@@ -38,6 +39,7 @@ export function Login({ onLogin, onError, onToggleForm }: LoginProps) {
 
     if (error) {
       setError(error.message);
+      onError(error);
     }
   };
 

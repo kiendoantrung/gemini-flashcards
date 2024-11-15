@@ -28,7 +28,9 @@ export function CreateDeckModal({ isOpen, onClose, onDeckCreated }: CreateDeckMo
           <X className="w-6 h-6" />
         </button>
         <div className="p-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Create New Deck</h2>
+          <h2 className="inline-block text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-6">
+            Create New Deck
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <CreateDeck onDeckCreated={handleDeckCreated} />
             <FileUploadDeck onDeckCreated={handleDeckCreated} />
