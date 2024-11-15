@@ -47,7 +47,7 @@ VITE_GOOGLE_AI_KEY=your_google_ai_api_key
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/gemini-flashcards.git
+git clone https://github.com/kiendoantrung/gemini-flashcards.git
 cd gemini-flashcards
 ```
 
