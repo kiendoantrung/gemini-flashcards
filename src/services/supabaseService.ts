@@ -44,16 +44,35 @@ export async function getUserDecks(userId: string): Promise<Deck[]> {
 }
 
 export async function updateDeck(deckId: string, updates: Partial<Deck>, userId: string) {
+  console.log('Updating deck in Supabase:', { deckId, updates, userId });
+
+  if (!updates.title || !updates.description || !updates.cards) {
+    throw new Error('Missing required fields');
+  }
+
+  const updateData = {
+    title: updates.title,
+    description: updates.description,
+    cards: updates.cards
+  };
+
+  console.log('Update data being sent:', updateData);
+
   const { data, error } = await supabase
     .from('decks')
-    .update(updates)
+    .update(updateData)
     .eq('id', deckId)
     .eq('user_id', userId)
+    .select()
     .single();
 
   if (error) {
-    console.error('Error updating deck:', error);
+    console.error('Supabase error:', error);
     throw error;
+  }
+
+  if (!data) {
+    throw new Error('No data returned from update');
   }
 
   return data;

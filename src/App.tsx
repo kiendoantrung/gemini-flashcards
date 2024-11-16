@@ -14,6 +14,7 @@ import { ProfileEditor } from './components/ProfileEditor';
 import { CreateDeckModal } from './components/CreateDeckModal';
 import { AuthCallback } from './components/AuthCallback';
 import { Home } from './components/Home';
+import { EditDeckPage } from './components/EditDeckPage';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -24,6 +25,7 @@ function App() {
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [editingDeck, setEditingDeck] = useState<Deck | null>(null);
 
   useEffect(() => {
     const handleAuthStateChange = async () => {
@@ -99,15 +101,34 @@ function App() {
 
   const handleDeckUpdate = async (deckId: string, updates: Partial<Deck>) => {
     try {
-      const user = await getCurrentUser();
-      if (!user.data.user) return;
+      console.log('Updating deck:', { deckId, updates });
 
-      await updateDeck(deckId, updates, user.data.user.id);
-      setDecks(decks.map(deck => 
-        deck.id === deckId ? { ...deck, ...updates } : deck
-      ));
+      const user = await getCurrentUser();
+      if (!user.data.user) {
+        throw new Error('User not authenticated');
+      }
+
+      // Call API to update
+      const updatedDeck = await updateDeck(deckId, updates, user.data.user.id);
+      console.log('Update response:', updatedDeck);
+
+      // Update local state
+      setDecks(prevDecks => 
+        prevDecks.map(deck => 
+          deck.id === deckId ? { ...deck, ...updates } : deck
+        )
+      );
+
+      // Update selectedDeck if it's currently selected
+      setSelectedDeck(prevDeck => 
+        prevDeck?.id === deckId ? { ...prevDeck, ...updates } : prevDeck
+      );
+
+      alert('Deck updated successfully!');
+
     } catch (error) {
       console.error('Failed to update deck:', error);
+      throw error;
     }
   };
 
@@ -121,6 +142,14 @@ function App() {
     } catch (error) {
       console.error('Failed to delete deck:', error);
     }
+  };
+
+  const handleSelectDeck = (deck: Deck) => {
+    setSelectedDeck(deck);
+  };
+
+  const handleEditDeck = (deck: Deck) => {
+    setEditingDeck(deck);
   };
 
   // Kiểm tra nếu đang ở trang callback
@@ -230,7 +259,16 @@ function App() {
       )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {selectedDeck ? (
+        {editingDeck ? (
+          <EditDeckPage
+            deck={editingDeck}
+            onSave={(updates) => {
+              handleDeckUpdate(editingDeck.id, updates);
+              setEditingDeck(null);
+            }}
+            onCancel={() => setEditingDeck(null)}
+          />
+        ) : selectedDeck ? (
           <StudyMode deck={selectedDeck} onExit={() => setSelectedDeck(null)} />
         ) : (
           <>
@@ -257,7 +295,13 @@ function App() {
               onClose={() => setIsModalOpen(false)}
               onDeckCreated={handleDeckCreated}
             />
-            <DeckList decks={decks} onSelectDeck={setSelectedDeck} onDeleteDeck={handleDeckDelete} onUpdateDeck={handleDeckUpdate} />
+            <DeckList 
+              decks={decks} 
+              onSelectDeck={handleSelectDeck} 
+              onDeleteDeck={handleDeckDelete} 
+              onUpdateDeck={handleDeckUpdate}
+              onEditDeck={handleEditDeck}
+            />
           </>
         )}
       </main>
