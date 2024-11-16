@@ -1,4 +1,4 @@
-import { BookOpen } from 'lucide-react';
+import { BookOpen, Pencil, Trash } from 'lucide-react';
 import type { Deck } from '../types/flashcard';
 
 interface DeckListProps {
@@ -6,9 +6,10 @@ interface DeckListProps {
   onSelectDeck: (deck: Deck) => void;
   onUpdateDeck: (deckId: string, updates: Partial<Deck>) => void;
   onDeleteDeck: (deckId: string) => void;
+  onEditDeck: (deck: Deck) => void;
 }
 
-export function DeckList({ decks, onSelectDeck, onUpdateDeck, onDeleteDeck }: DeckListProps) {
+export function DeckList({ decks, onSelectDeck, onDeleteDeck, onEditDeck }: DeckListProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {decks.map((deck) => (
@@ -34,21 +35,18 @@ export function DeckList({ decks, onSelectDeck, onUpdateDeck, onDeleteDeck }: De
                   e.stopPropagation();
                   onDeleteDeck(deck.id);
                 }}
-                className="text-red-600 hover:text-red-800"
+                className="text-red-600 hover:text-red-800 p-2"
               >
-                Delete
+                <Trash className="w-4 h-4" />
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  const newTitle = prompt('Enter new title:', deck.title);
-                  if (newTitle) {
-                    onUpdateDeck(deck.id, { title: newTitle });
-                  }
+                  onEditDeck(deck);
                 }}
-                className="text-blue-600 hover:text-blue-800"
+                className="text-blue-600 hover:text-blue-800 p-2"
               >
-                Edit
+                <Pencil className="w-4 h-4" />
               </button>
             </div>
           </div>
