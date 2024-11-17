@@ -185,7 +185,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50/80 via-white to-purple-50/80">
       <header className="bg-white/90 backdrop-blur-sm shadow-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <GraduationCap className="w-8 h-8 text-indigo-600" />
@@ -203,7 +203,7 @@ function App() {
                   imageUrl={user?.user_metadata?.avatar_url} 
                   size="sm"
                 />
-                <span className="text-gray-700 font-medium">
+                <span className="hidden md:inline text-gray-700 font-medium">
                   {user?.user_metadata?.name || user?.email}
                 </span>
                 <ChevronDown 
