@@ -285,7 +285,7 @@ function App() {
             <div className="flex justify-center mb-8">
               <button
                 onClick={() => setIsModalOpen(true)}
-                className="inline-flex items-center px-8 py-3.5 border border-transparent text-base font-medium rounded-full text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 transition-all hover:shadow-lg"
+                className="inline-flex items-center px-6 sm:px-8 py-3 sm:py-3.5 border border-transparent text-sm sm:text-base font-medium rounded-full text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 transition-all hover:shadow-lg w-full sm:w-auto max-w-[280px] justify-center"
               >
                 Create New Deck
               </button>
@@ -294,6 +294,7 @@ function App() {
               isOpen={isModalOpen}
               onClose={() => setIsModalOpen(false)}
               onDeckCreated={handleDeckCreated}
+              className="mx-4 sm:mx-0"
             />
             <DeckList 
               decks={decks} 

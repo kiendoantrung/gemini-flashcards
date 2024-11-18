@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
 import type { Flashcard } from '../types/flashcard';
+import { read, utils } from 'xlsx';
 
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GOOGLE_AI_KEY);
 
@@ -27,7 +28,73 @@ export async function extractTextFromFile(file: File): Promise<string> {
     return text;
   }
 
-  // For non-PDF text files
+  if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+      file.type === 'application/vnd.ms-excel') {
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = read(buffer);
+      
+      // Get first sheet
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      
+      // Convert sheet to array of arrays (raw data)
+      const rawData = utils.sheet_to_json<string[]>(worksheet, { header: 1 });
+      
+      // Skip empty rows and process each row
+      const processedData = rawData
+        .filter(row => row.length >= 2 && row[0] && row[1]) // Ensure row has both Q&A
+        .map(row => {
+          const question = row[0].toString().trim();
+          const answer = row[1].toString().trim();
+          return `Q: ${question}\nA: ${answer}`;
+        });
+
+      if (processedData.length === 0) {
+        throw new Error('No valid question-answer pairs found in Excel file');
+      }
+
+      return processedData.join('\n\n');
+    } catch (error) {
+      console.error('Excel parsing error:', error);
+      throw new Error('Invalid Excel file format. Please ensure file contains two columns with questions and answers.');
+    }
+  }
+
+  if (file.type === 'application/json') {
+    const text = await file.text();
+    try {
+      const json = JSON.parse(text);
+      // Expect array of simple question/answer pairs
+      if (!Array.isArray(json)) {
+        throw new Error('JSON must be an array of question/answer pairs');
+      }
+      // Convert JSON to readable text format
+      return json.map(item => 
+        `Q: ${item.question}\nA: ${item.answer}`
+      ).join('\n\n');
+    } catch (error) {
+      throw new Error('Invalid JSON file format');
+    }
+  }
+
+  if (file.type === 'text/csv') {
+    const text = await file.text();
+    // Convert CSV to readable text format
+    const lines = text.split('\n')
+      .filter(line => line.trim()) // Remove empty lines
+      .map(line => {
+        const [question, answer] = line.split(',').map(str => str.trim());
+        if (!question || !answer) {
+          throw new Error('Each CSV line must have a question and answer');
+        }
+        return `Q: ${question}\nA: ${answer}`;
+      })
+      .join('\n\n');
+    return lines;
+  }
+
+  // For other text files (including .txt)
   return await file.text();
 }
 
