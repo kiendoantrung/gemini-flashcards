@@ -10,16 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@auth/mongodb-adapter": "^3.7.3",
     "@google/generative-ai": "^0.2.1",
     "@headlessui/react": "^2.2.0",
     "@supabase/supabase-js": "^2.46.1",
     "@types/pdf-parse": "^1.1.4",
+    "framer-motion": "^11.11.17",
     "gsap": "^3.12.5",
-    "jwt-decode": "^4.0.0",
     "lucide-react": "^0.344.0",
-    "mongodb": "^6.10.0",
-    "next-auth": "^4.24.10",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^3.11.174",
     "react": "^18.3.1",

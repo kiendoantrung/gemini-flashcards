@@ -9,6 +9,21 @@ if (!API_KEY) {
 
 const genAI = new GoogleGenerativeAI(API_KEY);
 
+async function generateDistractorsFromAI(question: string, correctAnswer: string): Promise<string[]> {
+  const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+  
+  const prompt = `For the question "${question}" with correct answer "${correctAnswer}", 
+    generate 3 plausible but incorrect answer choices. Return them as a JSON array of strings.`;
+
+  const result = await model.generateContent(prompt);
+  const response = await result.response;
+  const text = response.text();
+  
+  // Clean the response text before parsing
+  const cleanText = text.replace(/```json\n?|```/g, '').trim();
+  return JSON.parse(cleanText);
+}
+
 export async function generateDeck(topic: string, numQuestions: number = 10): Promise<Deck> {
   const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
@@ -54,5 +69,17 @@ export async function generateDeck(topic: string, numQuestions: number = 10): Pr
     };
   } catch (error) {
     throw new Error('Failed to parse AI response');
+  }
+}
+
+export async function generateDistractors(question: string, correctAnswer: string): Promise<string[]> {
+  
+  try {
+    const distractors = await generateDistractorsFromAI(question, correctAnswer);
+    
+    return distractors;
+  } catch (error) {
+    console.error('Error generating distractors:', error);
+    return [];
   }
 }
