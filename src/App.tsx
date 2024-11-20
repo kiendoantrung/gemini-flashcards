@@ -15,6 +15,7 @@ import { CreateDeckModal } from './components/CreateDeckModal';
 import { AuthCallback } from './components/AuthCallback';
 import { Home } from './components/Home';
 import { EditDeckPage } from './components/EditDeckPage';
+import { Footer } from './components/Footer';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -306,7 +307,9 @@ function App() {
           </>
         )}
       </main>
+      <Footer />
     </div>
+    
   );
 }
 
