@@ -21,6 +21,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
   const [options, setOptions] = useState<string[]>([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
   const [distractorCache, setDistractorCache] = useState<Record<string, string[]>>({});
+  const [questionOptions, setQuestionOptions] = useState<Record<string, string[]>>({});
 
   const shuffledCards = useMemo(() => {
     return [...deck.cards].sort(() => Math.random() - 0.5);
@@ -38,7 +39,12 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
       try {
         // Kiểm tra cache trước
         if (distractorCache[currentCard.id]) {
-          setOptions(shuffleArray([...distractorCache[currentCard.id], currentCard.back]));
+          const allOptions = [...distractorCache[currentCard.id], currentCard.back];
+          setOptions(shuffleArray(allOptions));
+          setQuestionOptions(prev => ({
+            ...prev,
+            [currentCard.id]: allOptions
+          }));
           setIsLoadingOptions(false);
           return;
         }
@@ -56,6 +62,10 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
         
         const allOptions = [...distractors, currentCard.back];
         setOptions(shuffleArray(allOptions));
+        setQuestionOptions(prev => ({
+          ...prev,
+          [currentCard.id]: allOptions
+        }));
       } catch (error) {
         console.error('Error loading options:', error);
         const otherCards = deck.cards.filter(card => card.id !== currentCard.id);
@@ -65,7 +75,12 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
           .map(card => card.back);
         
         const allOptions = [...incorrectOptions, currentCard.back];
-        setOptions(allOptions.sort(() => Math.random() - 0.5));
+        const shuffledOptions = allOptions.sort(() => Math.random() - 0.5);
+        setOptions(shuffledOptions);
+        setQuestionOptions(prev => ({
+          ...prev,
+          [currentCard.id]: shuffledOptions
+        }));
       } finally {
         setIsLoadingOptions(false);
       }
@@ -97,15 +112,84 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
 
   if (showResult) {
     return (
-      <div className="max-w-2xl mx-auto text-center">
-        <h2 className="text-3xl font-bold text-gray-900 mb-4">Quiz Complete!</h2>
-        <div className="bg-white/80 backdrop-blur-md rounded-xl shadow-lg p-8 mb-6 border border-white/20">
+      <div className="max-w-2xl mx-auto">
+        <h2 className="text-3xl font-bold text-gray-900 mb-4 text-center">Quiz Complete!</h2>
+        
+        {/* Score Summary */}
+        <div className="bg-white/80 backdrop-blur-md rounded-xl shadow-lg p-8 mb-6 border border-white/20 text-center">
           <div className="text-6xl font-bold mb-4">
             {percentage}%
           </div>
           <p className="text-xl text-gray-600 mb-6">
             You got {score} out of {totalQuestions} questions correct
           </p>
+        </div>
+
+        {/* Detailed Review */}
+        <div className="bg-white/80 backdrop-blur-md rounded-xl shadow-lg p-8 mb-6 border border-white/20">
+          <h3 className="text-xl font-semibold mb-6">Review Answers</h3>
+          <div className="space-y-8">
+            {answers.map((answer, index) => {
+              const card = shuffledCards[index];
+              const options = questionOptions[card.id] || [];
+              
+              return (
+                <div 
+                  key={card.id}
+                  className="rounded-lg border border-gray-200 overflow-hidden"
+                >
+                  {/* Question Header */}
+                  <div className="bg-gray-50 p-4 border-b border-gray-200">
+                    <p className="font-medium text-gray-900">
+                      Question {index + 1}: {card.front}
+                    </p>
+                  </div>
+
+                  {/* Answer Options */}
+                  <div className="p-4 space-y-3">
+                    {options.map((option, optionIndex) => {
+                      const isUserAnswer = selectedAnswer === option;
+                      const isCorrectAnswer = card.back === option;
+                      
+                      let optionClass = "p-3 rounded-lg flex items-center gap-3 ";
+                      if (isUserAnswer && isCorrectAnswer) {
+                        optionClass += "bg-green-50 border-2 border-green-500";
+                      } else if (isUserAnswer && !isCorrectAnswer) {
+                        optionClass += "bg-red-50 border-2 border-red-500";
+                      } else if (isCorrectAnswer) {
+                        optionClass += "bg-green-50 border-2 border-green-500";
+                      } else {
+                        optionClass += "bg-gray-50 border-2 border-gray-200";
+                      }
+
+                      return (
+                        <div key={optionIndex} className={optionClass}>
+                          {isUserAnswer && isCorrectAnswer && (
+                            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                          )}
+                          {isUserAnswer && !isCorrectAnswer && (
+                            <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                          )}
+                          {!isUserAnswer && isCorrectAnswer && (
+                            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                          )}
+                          <span className={`flex-1 ${
+                            isUserAnswer || isCorrectAnswer ? 'font-medium' : ''
+                          }`}>
+                            {option}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Action Button */}
+        <div className="text-center mb-8">
           <button
             onClick={onExit}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
