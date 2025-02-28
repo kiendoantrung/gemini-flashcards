@@ -47,12 +47,15 @@ export async function generateDeck(
   const result = await model.generateContent(prompt);
   const response = await result.response;
   const text = response.text();
+  
+  // Clean the response text before parsing
+  const cleanText = text.replace(/```json\n?|```/g, "").trim();
   let data;
 
   try {
-    data = JSON.parse(text);
+    data = JSON.parse(cleanText);
   } catch (error) {
-    throw new Error("Invalid response format from AI service");
+    throw new Error(`Invalid response format from AI service: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 
   if (!data.title || !data.description || !Array.isArray(data.cards)) {
@@ -74,7 +77,7 @@ export async function generateDeck(
       })),
     };
   } catch (error) {
-    throw new Error("Failed to parse AI response");
+    throw new Error(`Failed to parse AI response: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
