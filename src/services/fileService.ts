@@ -1,9 +1,9 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 import type { Flashcard } from "../types/flashcard";
 import { read, utils } from "xlsx";
 
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GOOGLE_AI_KEY);
+const genAI = new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_AI_KEY });
 
 // Set the workerSrc to a CDN version of the worker script
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -111,8 +111,6 @@ export async function generateQAFromText(
   text: string,
   numQuestions: number = 10
 ): Promise<Array<Omit<Flashcard, "id">>> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
-
   const prompt = `Create ${numQuestions} flashcard questions and answers from this text. 
     Return only a JSON array with objects in this format, with no additional text or formatting:
     [
@@ -123,8 +121,11 @@ export async function generateQAFromText(
     ${text}`;
 
   try {
-    const result = await model.generateContent(prompt);
-    let responseText = await result.response?.text();
+    const result = await genAI.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+    });
+    let responseText = result.text;
 
     if (!responseText) {
       throw new Error("Empty response from AI model");

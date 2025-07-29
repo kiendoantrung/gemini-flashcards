@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import type { Deck, Flashcard } from "../types/flashcard";
 
 const API_KEY = import.meta.env.VITE_GOOGLE_AI_KEY;
@@ -7,20 +7,24 @@ if (!API_KEY) {
   throw new Error("Please set a valid Google AI API key in .env file");
 }
 
-const genAI = new GoogleGenerativeAI(API_KEY);
+const genAI = new GoogleGenAI({ apiKey: API_KEY });
 
 async function generateDistractorsFromAI(
   question: string,
   correctAnswer: string
 ): Promise<string[]> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
-
   const prompt = `For the question "${question}" with correct answer "${correctAnswer}", 
     generate 3 plausible but incorrect answer choices. Return them as a JSON array of strings.`;
 
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
-  const text = response.text();
+  const result = await genAI.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: prompt,
+  });
+  const text = result.text;
+
+  if (!text) {
+    throw new Error("Empty response from AI model");
+  }
 
   // Clean the response text before parsing
   const cleanText = text.replace(/```json\n?|```/g, "").trim();
@@ -31,8 +35,6 @@ export async function generateDeck(
   topic: string,
   numQuestions: number = 10
 ): Promise<Deck> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
-
   const prompt = `Create a set of flashcards about "${topic}". 
   Return a JSON object with the following structure:
   {
@@ -44,9 +46,15 @@ export async function generateDeck(
   }
   Include ${numQuestions} cards with clear, concise questions and answers.`;
 
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
-  const text = response.text();
+  const result = await genAI.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: prompt,
+  });
+  const text = result.text;
+  
+  if (!text) {
+    throw new Error("Empty response from AI model");
+  }
   
   // Clean the response text before parsing
   const cleanText = text.replace(/```json\n?|```/g, "").trim();
