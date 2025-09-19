@@ -1,5 +1,4 @@
-# Gemini Flashcards
-
+# Gemini Flashcards <p align="center">
 A modern flashcard application that leverages AI to help you study smarter, not harder.
 
 ## Features
@@ -105,3 +104,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Supabase for backend infrastructure
 - Tailwind CSS for styling
 - Lucide React for icons
+
+<h1 align="center">🌟 Support Gemini Flashcards</h1> <p align="center"> If you find this project useful or interesting, please consider giving it a ⭐ on GitHub!<br/> Your support helps the project grow and reach more learners. Let's build smarter study tools together! </p> <p align="center"> <a href="https://github.com/kiendoantrung/gemini-flashcards/stargazers"> <img src="https://img.shields.io/github/stars/kiendoantrung/gemini-flashcards.svg?style=for-the-badge&label=Star%20on%20GitHub&logo=github" alt="Star on GitHub"/> </a> </p>
