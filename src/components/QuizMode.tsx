@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { RotateCcw, CheckCircle, XCircle } from 'lucide-react';
 import type { Deck, QuizAnswer } from '../types/flashcard';
-import { generateDistractors } from '../services/aiService';
+import { generateDistractors, generateBatchDistractors } from '../services/aiService';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const shuffleArray = <T,>(array: T[]): T[] => {
@@ -30,20 +30,48 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
   const currentCard = shuffledCards[currentIndex];
   const isLast = currentIndex === shuffledCards.length - 1;
 
+  // Batch load distractors on mount
+  useEffect(() => {
+    const loadAllDistractors = async () => {
+      if (deck.cards.length === 0) return;
+
+      // Identify cards that don't have distractors in cache yet
+      const cardsToLoad = deck.cards.filter(card => !distractorCache[card.id]);
+
+      if (cardsToLoad.length === 0) return;
+
+      const batchResults = await generateBatchDistractors(cardsToLoad);
+
+      setDistractorCache(prev => ({
+        ...prev,
+        ...batchResults
+      }));
+    };
+
+    loadAllDistractors();
+  }, [deck.cards]);
+
   // Load options when current card changes
   useEffect(() => {
     async function loadOptions() {
       if (!currentCard) return;
-      
+
+      // Skip if options already loaded for this card
+      if (questionOptions[currentCard.id]) {
+        setOptions(questionOptions[currentCard.id]);
+        return;
+      }
+
       setIsLoadingOptions(true);
       try {
-        // Kiểm tra cache trước
+        // Check cache first
         if (distractorCache[currentCard.id]) {
           const allOptions = [...distractorCache[currentCard.id], currentCard.back];
-          setOptions(shuffleArray(allOptions));
+          const shuffledOptions = shuffleArray(allOptions);
+          setOptions(shuffledOptions);
           setQuestionOptions(prev => ({
             ...prev,
-            [currentCard.id]: allOptions
+            [currentCard.id]: shuffledOptions
           }));
           setIsLoadingOptions(false);
           return;
@@ -53,18 +81,19 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
           currentCard.front,
           currentCard.back
         );
-        
-        // Lưu vào cache
+
+        // Save to cache
         setDistractorCache(prev => ({
           ...prev,
           [currentCard.id]: distractors
         }));
-        
+
         const allOptions = [...distractors, currentCard.back];
-        setOptions(shuffleArray(allOptions));
+        const shuffledOptions = shuffleArray(allOptions);
+        setOptions(shuffledOptions);
         setQuestionOptions(prev => ({
           ...prev,
-          [currentCard.id]: allOptions
+          [currentCard.id]: shuffledOptions
         }));
       } catch (error) {
         console.error('Error loading options:', error);
@@ -73,9 +102,9 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
           .sort(() => Math.random() - 0.5)
           .slice(0, 3)
           .map(card => card.back);
-        
+
         const allOptions = [...incorrectOptions, currentCard.back];
-        const shuffledOptions = allOptions.sort(() => Math.random() - 0.5);
+        const shuffledOptions = shuffleArray(allOptions);
         setOptions(shuffledOptions);
         setQuestionOptions(prev => ({
           ...prev,
@@ -87,12 +116,12 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
     }
 
     loadOptions();
-  }, [currentCard, deck.cards, distractorCache]);
+  }, [currentCard, deck.cards, distractorCache, questionOptions]);
 
   const handleAnswer = (answer: string) => {
     setSelectedAnswer(answer);
     const isCorrect = answer === currentCard.back;
-    setAnswers([...answers, { cardId: currentCard.id, isCorrect }]);
+    setAnswers([...answers, { cardId: currentCard.id, isCorrect, selectedAnswer: answer }]);
 
     if (isLast) {
       setTimeout(() => {
@@ -114,7 +143,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
     return (
       <div className="max-w-2xl mx-auto">
         <h2 className="text-3xl font-bold text-gray-900 mb-4 text-center">Quiz Complete!</h2>
-        
+
         {/* Score Summary */}
         <div className="bg-white/80 backdrop-blur-md rounded-xl shadow-lg p-8 mb-6 border border-white/20 text-center">
           <div className="text-6xl font-bold mb-4">
@@ -132,9 +161,9 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
             {answers.map((answer, index) => {
               const card = shuffledCards[index];
               const options = questionOptions[card.id] || [];
-              
+
               return (
-                <div 
+                <div
                   key={card.id}
                   className="rounded-lg border border-gray-200 overflow-hidden"
                 >
@@ -148,9 +177,9 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
                   {/* Answer Options */}
                   <div className="p-4 space-y-3">
                     {options.map((option, optionIndex) => {
-                      const isUserAnswer = selectedAnswer === option;
+                      const isUserAnswer = answer.selectedAnswer === option;
                       const isCorrectAnswer = card.back === option;
-                      
+
                       let optionClass = "p-3 rounded-lg flex items-center gap-3 ";
                       if (isUserAnswer && isCorrectAnswer) {
                         optionClass += "bg-green-50 border-2 border-green-500";
@@ -173,9 +202,8 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
                           {!isUserAnswer && isCorrectAnswer && (
                             <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
                           )}
-                          <span className={`flex-1 ${
-                            isUserAnswer || isCorrectAnswer ? 'font-medium' : ''
-                          }`}>
+                          <span className={`flex-1 ${isUserAnswer || isCorrectAnswer ? 'font-medium' : ''
+                            }`}>
                             {option}
                           </span>
                         </div>
@@ -210,7 +238,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
           <span>{Math.round(((currentIndex + 1) / totalQuestions) * 100)}%</span>
         </div>
         <div className="w-full h-2 bg-gray-200 rounded-full">
-          <div 
+          <div
             className="h-full bg-indigo-600 rounded-full transition-all duration-300"
             style={{ width: `${((currentIndex + 1) / totalQuestions) * 100}%` }}
           />
@@ -229,7 +257,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
           <h3 className="text-xl font-semibold text-gray-800 mb-6">
             {currentCard.front}
           </h3>
-          
+
           {isLoadingOptions ? (
             <div className="space-y-4">
               {[1, 2, 3, 4].map((index) => (
@@ -239,7 +267,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
               ))}
             </div>
           ) : (
-            <motion.div 
+            <motion.div
               className="space-y-4"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -248,7 +276,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
               {options.map((option, index) => {
                 const isSelected = selectedAnswer === option;
                 const isCorrect = option === currentCard.back;
-                
+
                 let buttonClass = 'w-full text-left p-4 rounded-lg border-2 transition-all';
                 if (!selectedAnswer) {
                   buttonClass += ' hover:border-indigo-600 border-gray-200';

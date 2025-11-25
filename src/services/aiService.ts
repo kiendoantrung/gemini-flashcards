@@ -51,11 +51,11 @@ export async function generateDeck(
     contents: prompt,
   });
   const text = result.text;
-  
+
   if (!text) {
     throw new Error("Empty response from AI model");
   }
-  
+
   // Clean the response text before parsing
   const cleanText = text.replace(/```json\n?|```/g, "").trim();
   let data;
@@ -103,5 +103,58 @@ export async function generateDistractors(
   } catch (error) {
     console.error("Error generating distractors:", error);
     return [];
+  }
+}
+
+async function generateBatchDistractorsFromAI(
+  cards: Flashcard[]
+): Promise<Record<string, string[]>> {
+  const cardsList = cards.map(c => ({ id: c.id, question: c.front, answer: c.back }));
+  const prompt = `For the following flashcards, generate 3 plausible but incorrect answer choices (distractors) for each.
+    Return a JSON object where keys are the card IDs and values are arrays of 3 distractor strings.
+    
+    Cards:
+    ${JSON.stringify(cardsList, null, 2)}
+    
+    Example output structure:
+    {
+      "card_id_1": ["distractor1", "distractor2", "distractor3"],
+      "card_id_2": ["distractor1", "distractor2", "distractor3"]
+    }`;
+
+  const result = await genAI.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: prompt,
+  });
+  const text = result.text;
+
+  if (!text) {
+    throw new Error("Empty response from AI model");
+  }
+
+  // Clean the response text before parsing
+  const cleanText = text.replace(/```json\n?|```/g, "").trim();
+  return JSON.parse(cleanText);
+}
+
+export async function generateBatchDistractors(
+  cards: Flashcard[]
+): Promise<Record<string, string[]>> {
+  try {
+    // Process in chunks of 5 to avoid hitting token limits or timeouts
+    const chunkSize = 5;
+    const chunks = [];
+    for (let i = 0; i < cards.length; i += chunkSize) {
+      chunks.push(cards.slice(i, i + chunkSize));
+    }
+
+    const results = await Promise.all(
+      chunks.map(chunk => generateBatchDistractorsFromAI(chunk))
+    );
+
+    return results.reduce((acc, curr) => ({ ...acc, ...curr }), {});
+  } catch (error) {
+    console.error("Error generating batch distractors:", error);
+    return {};
   }
 }

@@ -14,4 +14,5 @@ export interface Deck {
 export interface QuizAnswer {
   cardId: string;
   isCorrect: boolean;
+  selectedAnswer: string;
 }
