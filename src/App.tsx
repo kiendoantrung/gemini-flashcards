@@ -8,14 +8,14 @@ import { Signup } from './components/Signup';
 import { getCurrentUser, logout } from './services/authService';
 import { deleteDeck, updateDeck, saveDeck } from './services/supabaseService';
 import { getUserDecks } from './services/supabaseService';
-import { supabase } from './services/supabase';
+import { supabase } from './lib/supabase';
 import { Avatar } from './components/Avatar';
 import { ProfileEditor } from './components/ProfileEditor';
 import { CreateDeckModal } from './components/CreateDeckModal';
 import { AuthCallback } from './components/AuthCallback';
 import { Home } from './components/Home';
 import { EditDeckPage } from './components/EditDeckPage';
-import { Footer } from './components/Footer';
+
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -71,10 +71,10 @@ function App() {
     try {
       const user = await getCurrentUser();
       if (!user.data.user) return;
-      
+
       // Save to Supabase
       const deckId = await saveDeck(newDeck, user.data.user.id);
-      
+
       // Update local state with the saved deck
       setDecks([{ ...newDeck, id: deckId }, ...decks]);
     } catch (error) {
@@ -114,14 +114,14 @@ function App() {
       console.log('Update response:', updatedDeck);
 
       // Update local state
-      setDecks(prevDecks => 
-        prevDecks.map(deck => 
+      setDecks(prevDecks =>
+        prevDecks.map(deck =>
           deck.id === deckId ? { ...deck, ...updates } : deck
         )
       );
 
       // Update selectedDeck if it's currently selected
-      setSelectedDeck(prevDeck => 
+      setSelectedDeck(prevDeck =>
         prevDeck?.id === deckId ? { ...prevDeck, ...updates } : prevDeck
       );
 
@@ -163,20 +163,20 @@ function App() {
     if (window.location.pathname === '/') {
       return <Home />;
     }
-    
+
     return (
       <div className="min-h-screen bg-gray-100">
         {showLogin ? (
-          <Login 
-            onLogin={handleAuth} 
+          <Login
+            onLogin={handleAuth}
             onError={handleAuthError}
-            onToggleForm={() => setShowLogin(false)} 
+            onToggleForm={() => setShowLogin(false)}
           />
         ) : (
-          <Signup 
-            onSignup={handleAuth} 
+          <Signup
+            onSignup={handleAuth}
             onError={handleAuthError}
-            onToggleForm={() => setShowLogin(true)} 
+            onToggleForm={() => setShowLogin(true)}
           />
         )}
       </div>
@@ -184,13 +184,13 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50/80 via-white to-purple-50/80">
-      <header className="bg-white/90 backdrop-blur-sm shadow-md sticky top-0 z-50">
+    <div className="min-h-screen bg-warm-cream flex flex-col">
+      <header className="bg-warm-cream/90 backdrop-blur-sm shadow-sm sticky top-0 z-50 border-b border-warm-gray">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <GraduationCap className="w-8 h-8 text-indigo-600" />
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 text-transparent bg-clip-text">
+              <GraduationCap className="w-8 h-8 text-warm-brown" />
+              <h1 className="text-2xl font-bold text-warm-brown">
                 Gemini Flashcards
               </h1>
             </div>
@@ -199,36 +199,35 @@ function App() {
                 onClick={() => setShowDropdown(!showDropdown)}
                 className="flex items-center gap-2 px-3 py-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
               >
-                <Avatar 
-                  name={user?.user_metadata?.name || user?.email || 'User'} 
-                  imageUrl={user?.user_metadata?.avatar_url} 
+                <Avatar
+                  name={user?.user_metadata?.name || user?.email || 'User'}
+                  imageUrl={user?.user_metadata?.avatar_url}
                   size="sm"
                 />
-                <span className="hidden md:inline text-gray-700 font-medium">
+                <span className="hidden md:inline text-warm-brown font-medium">
                   {user?.user_metadata?.name || user?.email}
                 </span>
-                <ChevronDown 
-                  className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
-                    showDropdown ? 'transform rotate-180' : ''
-                  }`}
+                <ChevronDown
+                  className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${showDropdown ? 'transform rotate-180' : ''
+                    }`}
                 />
               </button>
 
               {showDropdown && (
-                <div className="absolute right-0 top-full mt-2 w-56 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 transform opacity-100 scale-100 transition-all duration-200 ease-out origin-top-right">
+                <div className="absolute right-0 top-full mt-2 w-56 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 transform opacity-100 scale-100 transition-all duration-200 ease-out origin-top-right border border-warm-gray">
                   <div className="py-1" role="menu">
                     <button
                       onClick={() => {
                         setShowProfileEditor(true);
                         setShowDropdown(false);
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-warm-brown hover:bg-warm-cream transition-colors duration-150"
                       role="menuitem"
                     >
-                      <UserCircle className="w-4 h-4 text-gray-500" />
+                      <UserCircle className="w-4 h-4 text-warm-orange" />
                       <span>Edit Profile</span>
                     </button>
-                    <div className="h-px bg-gray-200 mx-3"></div>
+                    <div className="h-px bg-warm-gray mx-3"></div>
                     <button
                       onClick={() => {
                         handleLogout();
@@ -259,7 +258,7 @@ function App() {
         />
       )}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full">
         {editingDeck ? (
           <EditDeckPage
             deck={editingDeck}
@@ -273,43 +272,34 @@ function App() {
           <StudyMode deck={selectedDeck} onExit={() => setSelectedDeck(null)} />
         ) : (
           <>
-            <div className="mb-8">
-              <div className="py-4">
-                <p className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 font-bold text-lg md:text-xl lg:text-2xl text-center animate-gradient">
-                  Because Who Needs a Cram Session
-                </p>
-                <p className="text-transparent bg-clip-text bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 font-bold text-lg md:text-xl lg:text-2xl text-center mt-2 animate-gradient">
-                  When You've Got Genius in Your Pocket?
-                </p>
-              </div>
+            <div className="mb-12 text-center">
+              <h2 className="text-3xl md:text-4xl font-bold text-warm-brown mb-4">
+                Your Learning Journey
+              </h2>
+              <p className="text-warm-brown/60 text-lg max-w-2xl mx-auto">
+                Manage your flashcard decks and track your progress.
+              </p>
             </div>
-            <div className="flex justify-center mb-8">
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="inline-flex items-center px-6 sm:px-8 py-3 sm:py-3.5 border border-transparent text-sm sm:text-base font-medium rounded-full text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 transition-all hover:shadow-lg w-full sm:w-auto max-w-[280px] justify-center"
-              >
-                Create New Deck
-              </button>
-            </div>
+
             <CreateDeckModal
               isOpen={isModalOpen}
               onClose={() => setIsModalOpen(false)}
               onDeckCreated={handleDeckCreated}
               className="mx-4 sm:mx-0"
             />
-            <DeckList 
-              decks={decks} 
-              onSelectDeck={handleSelectDeck} 
-              onDeleteDeck={handleDeckDelete} 
+            <DeckList
+              decks={decks}
+              onSelectDeck={handleSelectDeck}
+              onDeleteDeck={handleDeckDelete}
               onUpdateDeck={handleDeckUpdate}
               onEditDeck={handleEditDeck}
+              onCreateDeck={() => setIsModalOpen(true)}
             />
           </>
         )}
       </main>
-      <Footer />
+
     </div>
-    
   );
 }
 
