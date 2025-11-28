@@ -30,7 +30,7 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       <div className="mb-6 flex items-center justify-between">
         <button
           onClick={onExit}
@@ -39,7 +39,7 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
           <RotateCcw className="w-4 h-4" />
           Back to Decks
         </button>
-        <h2 className="text-xl font-semibold text-gray-800">{deck.title}</h2>
+        <h2 className="text-xl font-semibold text-warm-brown">{deck.title}</h2>
         <div className="text-sm text-gray-500">
           {currentIndex + 1} / {deck.cards.length}
         </div>
@@ -53,11 +53,10 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
         <button
           onClick={handlePrevious}
           disabled={isFirst}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-            isFirst
-              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              : 'bg-white text-gray-800 hover:bg-gray-50'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg ${isFirst
+            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            : 'bg-white text-warm-brown hover:bg-warm-cream border border-warm-gray'
+            }`}
         >
           <ArrowLeft className="w-4 h-4" />
           Previous
@@ -65,11 +64,10 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
         <button
           onClick={handleNext}
           disabled={isLast}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-            isLast
-              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              : 'bg-indigo-600 text-white hover:bg-indigo-700'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg ${isLast
+            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            : 'bg-warm-orange text-white hover:bg-warm-brown'
+            }`}
         >
           Next
           <ArrowRight className="w-4 h-4" />
@@ -77,7 +75,7 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
         {isLast && (
           <button
             onClick={() => setShowQuiz(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-warm-olive text-white hover:bg-warm-brown"
           >
             <CheckCircle className="w-4 h-4" />
             Take Quiz

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { extractTextFromFile, generateQAFromText } from '../services/fileService';
 import type { Deck } from '../types/flashcard';
+import { FileText, Upload, FileSpreadsheet, Loader2, AlertCircle } from 'lucide-react';
 
 interface FileUploadDeckProps {
   onDeckCreated: (deck: Deck) => void;
@@ -10,17 +11,17 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [numQuestions, setNumQuestions] = useState(10);
-  
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'text' | 'qa') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const text = await extractTextFromFile(file);
-      
+
       if (type === 'text') {
         const cards = await generateQAFromText(text, numQuestions);
         const deck: Deck = {
@@ -58,94 +59,89 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
   };
 
   return (
-    <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200/80 p-8 max-w-4xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6 flex items-center bg-gradient-to-r from-indigo-600 to-purple-600 text-transparent bg-clip-text">
-        <svg className="w-6 h-6 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-        </svg>
-        Create Deck from File
-      </h2>
-
-      <div className="space-y-8">
-        <div className="space-y-6">
-          <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-            <h4 className="text-md font-semibold text-gray-700 mb-4">Generate Q&A from Text Content</h4>
-            <div className="mb-4">
-              <label className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700">Number of questions:</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="50"
-                  value={numQuestions}
-                  onChange={(e) => setNumQuestions(Number(e.target.value))}
-                  className="w-24 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                />
-              </label>
-            </div>
+    <div className="space-y-8">
+      <div className="space-y-6">
+        <div className="bg-white/80 p-6 rounded-xl border border-warm-gray hover:border-warm-orange/30 transition-colors">
+          <h4 className="text-sm font-semibold text-warm-brown mb-4 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-warm-orange" />
+            Generate Q&A from Text Content
+          </h4>
+          <div className="mb-4">
+            <label className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-warm-brown/80">Number of questions:</span>
+              <input
+                type="number"
+                min="1"
+                max="50"
+                value={numQuestions}
+                onChange={(e) => setNumQuestions(Number(e.target.value))}
+                className="w-20 px-2 py-1.5 border border-warm-gray rounded-lg bg-white text-warm-brown text-center text-sm focus:ring-warm-orange focus:border-warm-orange"
+              />
+            </label>
+          </div>
+          <div className="relative group">
             <input
               type="file"
               accept=".txt,.pdf,.doc,.docx"
               onChange={(e) => handleFileUpload(e, 'text')}
-              className="block w-full text-sm text-gray-500
+              className="block w-full text-sm text-warm-brown/60
                 file:mr-4 file:py-2.5 file:px-4
-                file:rounded-full file:border-0
+                file:rounded-lg file:border-0
                 file:text-sm file:font-semibold
-                file:bg-indigo-600 file:text-white
-                hover:file:bg-indigo-700
+                file:bg-warm-orange file:text-white
+                hover:file:bg-warm-brown
                 file:transition-colors file:duration-200
                 cursor-pointer"
+              disabled={isLoading}
             />
-            <p className="mt-2 text-sm text-gray-500 flex items-center">
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Upload PDF, DOC, or TXT files to auto-generate flashcards
-            </p>
           </div>
+          <p className="mt-2 text-xs text-warm-brown/60 flex items-center">
+            <Upload className="w-3 h-3 mr-1" />
+            Upload PDF, DOC, or TXT files
+          </p>
+        </div>
 
-          <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-            <h4 className="text-md font-semibold text-gray-700 mb-4">Import Existing Q&A Pairs</h4>
+        <div className="bg-white/80 p-6 rounded-xl border border-warm-gray hover:border-warm-orange/30 transition-colors">
+          <h4 className="text-sm font-semibold text-warm-brown mb-4 flex items-center gap-2">
+            <FileSpreadsheet className="w-4 h-4 text-warm-olive" />
+            Import Existing Q&A Pairs
+          </h4>
+          <div className="relative group">
             <input
               type="file"
               accept=".csv,.xlsx,.xls,.json"
               onChange={(e) => handleFileUpload(e, 'qa')}
-              className="block w-full text-sm text-gray-500
+              className="block w-full text-sm text-warm-brown/60
                 file:mr-4 file:py-2.5 file:px-4
-                file:rounded-full file:border-0
+                file:rounded-lg file:border-0
                 file:text-sm file:font-semibold
-                file:bg-indigo-600 file:text-white
-                hover:file:bg-indigo-700
+                file:bg-warm-olive file:text-white
+                hover:file:bg-warm-brown
                 file:transition-colors file:duration-200
                 cursor-pointer"
+              disabled={isLoading}
             />
-            <p className="mt-2 text-sm text-gray-500 flex items-center">
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Import CSV, Excel, or JSON files with question-answer pairs
-            </p>
           </div>
+          <p className="mt-2 text-xs text-warm-brown/60 flex items-center">
+            <Upload className="w-3 h-3 mr-1" />
+            Import CSV, Excel, or JSON files
+          </p>
         </div>
       </div>
 
       {error && (
-        <div className="mt-4 p-4 bg-red-50 rounded-lg border border-red-200">
+        <div className="p-4 bg-red-50 rounded-xl border border-red-100">
           <p className="text-red-600 text-sm flex items-center">
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            <AlertCircle className="w-4 h-4 mr-2" />
             {error}
           </p>
         </div>
       )}
-      
+
       {isLoading && (
-        <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <p className="text-blue-600 text-sm flex items-center">
-            <svg className="w-4 h-4 mr-1 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+        <div className="p-4 bg-warm-orange/10 rounded-xl border border-warm-orange/20">
+          <p className="text-warm-orange text-sm flex items-center">
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             Processing file...
           </p>
         </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { loginWithEmail} from '../services/authService';
+import { loginWithEmail } from '../services/authService';
 import { supabase } from '../lib/supabase';
 
 interface LoginProps {
@@ -44,43 +44,43 @@ export function Login({ onLogin, onError, onToggleForm }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-10 space-y-8">
+    <div className="min-h-screen flex items-center justify-center bg-warm-cream">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-10 space-y-8 border border-warm-gray">
         <div>
-          <h2 className="text-3xl font-bold text-center text-gray-900 mb-2">Welcome back</h2>
+          <h2 className="text-3xl font-bold text-center text-warm-brown mb-2">Welcome back</h2>
         </div>
-        
+
         <form onSubmit={handleEmailLogin} className="space-y-6">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
+            <label className="block text-sm font-semibold text-warm-brown mb-2">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+              className="w-full px-4 py-3 border border-warm-gray rounded-lg focus:ring-2 focus:ring-warm-orange focus:border-warm-orange transition-all text-warm-brown"
               required
             />
           </div>
-          
+
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
+            <label className="block text-sm font-semibold text-warm-brown mb-2">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+              className="w-full px-4 py-3 border border-warm-gray rounded-lg focus:ring-2 focus:ring-warm-orange focus:border-warm-orange transition-all text-warm-brown"
               required
             />
           </div>
 
           {error && (
-            <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg">{error}</div>
+            <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-100">{error}</div>
           )}
 
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 font-medium transition-colors duration-200"
+            className="w-full bg-warm-orange text-white py-3 rounded-lg hover:bg-warm-brown font-medium transition-colors duration-200 shadow-sm hover:shadow-md"
           >
             {isLoading ? 'Loading...' : 'Sign in'}
           </button>
@@ -89,17 +89,17 @@ export function Login({ onLogin, onError, onToggleForm }: LoginProps) {
         <div>
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200" />
+              <div className="w-full border-t border-warm-gray" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-white text-gray-500">Or continue with</span>
+              <span className="px-4 bg-white text-warm-brown/60">Or continue with</span>
             </div>
           </div>
 
           <div className="mt-6">
             <button
               onClick={handleGoogleLogin}
-              className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 flex items-center justify-center gap-3 hover:bg-gray-50 font-medium transition-colors duration-200"
+              className="w-full bg-white border border-warm-gray rounded-lg px-4 py-3 flex items-center justify-center gap-3 hover:bg-warm-cream/50 font-medium transition-colors duration-200 text-warm-brown"
             >
               <img src="/icons8-google-480.svg" alt="Google" className="w-5 h-5" />
               Continue with Google
@@ -107,11 +107,11 @@ export function Login({ onLogin, onError, onToggleForm }: LoginProps) {
           </div>
         </div>
 
-        <p className="text-center text-sm text-gray-600">
+        <p className="text-center text-sm text-warm-brown/80">
           Don't have an account?{' '}
           <button
             onClick={onToggleForm}
-            className="text-indigo-600 hover:text-indigo-500 font-medium"
+            className="text-warm-orange hover:text-warm-brown font-medium transition-colors"
           >
             Sign up
           </button>
@@ -119,4 +119,4 @@ export function Login({ onLogin, onError, onToggleForm }: LoginProps) {
       </div>
     </div>
   );
-} 
+}

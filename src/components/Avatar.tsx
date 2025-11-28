@@ -3,19 +3,19 @@ import { useMemo } from 'react';
 interface AvatarProps {
   name: string;
   imageUrl?: string | null;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
 }
 
 export function Avatar({ name, imageUrl, size = 'md' }: AvatarProps) {
   const initials = name.charAt(0).toUpperCase();
-  
+
   const backgroundColor = useMemo(() => {
     // Generate consistent color based on name
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
       hash = name.charCodeAt(i) + ((hash << 5) - hash);
     }
-    
+
     const hue = hash % 360;
     return `hsl(${hue}, 70%, 50%)`;
   }, [name]);
@@ -23,7 +23,9 @@ export function Avatar({ name, imageUrl, size = 'md' }: AvatarProps) {
   const sizeClasses = {
     sm: 'w-8 h-8 text-sm',
     md: 'w-10 h-10 text-base',
-    lg: 'w-12 h-12 text-lg'
+    lg: 'w-12 h-12 text-lg',
+    xl: 'w-24 h-24 text-3xl',
+    '2xl': 'w-32 h-32 text-4xl'
   };
 
   if (imageUrl) {
@@ -44,4 +46,4 @@ export function Avatar({ name, imageUrl, size = 'md' }: AvatarProps) {
       {initials}
     </div>
   );
-} 
+}

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
-import { RotateCcw, CheckCircle, XCircle } from 'lucide-react';
+import { RotateCcw, CheckCircle, XCircle, Trophy } from 'lucide-react';
 import type { Deck, QuizAnswer } from '../types/flashcard';
-import { generateDistractors, generateBatchDistractors } from '../services/aiService';
+import { generateBatchDistractors } from '../services/aiService';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const shuffleArray = <T,>(array: T[]): T[] => {
@@ -18,9 +18,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
   const [answers, setAnswers] = useState<QuizAnswer[]>([]);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [showResult, setShowResult] = useState(false);
-  const [options, setOptions] = useState<string[]>([]);
-  const [isLoadingOptions, setIsLoadingOptions] = useState(false);
-  const [distractorCache, setDistractorCache] = useState<Record<string, string[]>>({});
+  const [isLoading, setIsLoading] = useState(true);
   const [questionOptions, setQuestionOptions] = useState<Record<string, string[]>>({});
 
   const shuffledCards = useMemo(() => {
@@ -30,93 +28,63 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
   const currentCard = shuffledCards[currentIndex];
   const isLast = currentIndex === shuffledCards.length - 1;
 
-  // Batch load distractors on mount
+  // Load ALL distractors once on mount and pre-generate all options
   useEffect(() => {
-    const loadAllDistractors = async () => {
-      if (deck.cards.length === 0) return;
-
-      // Identify cards that don't have distractors in cache yet
-      const cardsToLoad = deck.cards.filter(card => !distractorCache[card.id]);
-
-      if (cardsToLoad.length === 0) return;
-
-      const batchResults = await generateBatchDistractors(cardsToLoad);
-
-      setDistractorCache(prev => ({
-        ...prev,
-        ...batchResults
-      }));
-    };
-
-    loadAllDistractors();
-  }, [deck.cards]);
-
-  // Load options when current card changes
-  useEffect(() => {
-    async function loadOptions() {
-      if (!currentCard) return;
-
-      // Skip if options already loaded for this card
-      if (questionOptions[currentCard.id]) {
-        setOptions(questionOptions[currentCard.id]);
+    const loadAllOptions = async () => {
+      if (deck.cards.length === 0) {
+        setIsLoading(false);
         return;
       }
 
-      setIsLoadingOptions(true);
+      setIsLoading(true);
+
       try {
-        // Check cache first
-        if (distractorCache[currentCard.id]) {
-          const allOptions = [...distractorCache[currentCard.id], currentCard.back];
-          const shuffledOptions = shuffleArray(allOptions);
-          setOptions(shuffledOptions);
-          setQuestionOptions(prev => ({
-            ...prev,
-            [currentCard.id]: shuffledOptions
-          }));
-          setIsLoadingOptions(false);
-          return;
+        // Single API call to generate distractors for ALL cards
+        const batchResults = await generateBatchDistractors(deck.cards);
+
+        // Pre-generate and shuffle options for all cards
+        const allOptions: Record<string, string[]> = {};
+
+        for (const card of deck.cards) {
+          const distractors = batchResults[card.id] || [];
+
+          // Fallback if AI didn't return distractors for this card
+          if (distractors.length === 0) {
+            const otherCards = deck.cards.filter(c => c.id !== card.id);
+            const fallbackDistractors = otherCards
+              .sort(() => Math.random() - 0.5)
+              .slice(0, 3)
+              .map(c => c.back);
+            allOptions[card.id] = shuffleArray([...fallbackDistractors, card.back]);
+          } else {
+            allOptions[card.id] = shuffleArray([...distractors, card.back]);
+          }
         }
 
-        const distractors = await generateDistractors(
-          currentCard.front,
-          currentCard.back
-        );
-
-        // Save to cache
-        setDistractorCache(prev => ({
-          ...prev,
-          [currentCard.id]: distractors
-        }));
-
-        const allOptions = [...distractors, currentCard.back];
-        const shuffledOptions = shuffleArray(allOptions);
-        setOptions(shuffledOptions);
-        setQuestionOptions(prev => ({
-          ...prev,
-          [currentCard.id]: shuffledOptions
-        }));
+        setQuestionOptions(allOptions);
       } catch (error) {
-        console.error('Error loading options:', error);
-        const otherCards = deck.cards.filter(card => card.id !== currentCard.id);
-        const incorrectOptions = otherCards
-          .sort(() => Math.random() - 0.5)
-          .slice(0, 3)
-          .map(card => card.back);
+        console.error('Error loading distractors:', error);
 
-        const allOptions = [...incorrectOptions, currentCard.back];
-        const shuffledOptions = shuffleArray(allOptions);
-        setOptions(shuffledOptions);
-        setQuestionOptions(prev => ({
-          ...prev,
-          [currentCard.id]: shuffledOptions
-        }));
+        // Fallback: use other card answers as distractors
+        const allOptions: Record<string, string[]> = {};
+        for (const card of deck.cards) {
+          const otherCards = deck.cards.filter(c => c.id !== card.id);
+          const fallbackDistractors = otherCards
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 3)
+            .map(c => c.back);
+          allOptions[card.id] = shuffleArray([...fallbackDistractors, card.back]);
+        }
+        setQuestionOptions(allOptions);
       } finally {
-        setIsLoadingOptions(false);
+        setIsLoading(false);
       }
-    }
+    };
 
-    loadOptions();
-  }, [currentCard, deck.cards, distractorCache, questionOptions]);
+    loadAllOptions();
+  }, [deck.cards]);
+
+  const options = questionOptions[currentCard?.id] || [];
 
   const handleAnswer = (answer: string) => {
     setSelectedAnswer(answer);
@@ -126,12 +94,12 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
     if (isLast) {
       setTimeout(() => {
         setShowResult(true);
-      }, 1000);
+      }, 1500);
     } else {
       setTimeout(() => {
         setCurrentIndex(currentIndex + 1);
         setSelectedAnswer(null);
-      }, 1000);
+      }, 1500);
     }
   };
 
@@ -141,105 +109,115 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
 
   if (showResult) {
     return (
-      <div className="max-w-2xl mx-auto">
-        <h2 className="text-3xl font-bold text-gray-900 mb-4 text-center">Quiz Complete!</h2>
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        <div className="text-center mb-12 animate-fade-in">
+          <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-warm-orange/10 text-warm-orange mb-6 shadow-sm">
+            <Trophy className="w-12 h-12" />
+          </div>
+          <h2 className="text-4xl font-bold text-warm-brown mb-2">Quiz Complete!</h2>
+          <p className="text-warm-brown/60 text-lg">Here's how you did</p>
+        </div>
 
         {/* Score Summary */}
-        <div className="bg-white/80 backdrop-blur-md rounded-xl shadow-lg p-8 mb-6 border border-white/20 text-center">
-          <div className="text-6xl font-bold mb-4">
+        <div className="bg-white rounded-3xl shadow-sm border border-warm-gray p-10 mb-10 text-center animate-scale-in">
+          <div className="text-8xl font-bold text-warm-brown mb-6 tracking-tight">
             {percentage}%
           </div>
-          <p className="text-xl text-gray-600 mb-6">
-            You got {score} out of {totalQuestions} questions correct
+          <p className="text-2xl text-warm-brown/80 mb-10">
+            You got <span className="font-bold text-warm-orange">{score}</span> out of <span className="font-bold">{totalQuestions}</span> questions correct
           </p>
+
+          <button
+            onClick={onExit}
+            className="inline-flex items-center gap-2 px-10 py-4 rounded-full bg-warm-orange text-white hover:bg-warm-brown transition-all shadow-lg shadow-orange-200/50 hover:shadow-xl hover:-translate-y-1 font-medium text-lg"
+          >
+            <RotateCcw className="w-5 h-5" />
+            Back to Decks
+          </button>
         </div>
 
         {/* Detailed Review */}
-        <div className="bg-white/80 backdrop-blur-md rounded-xl shadow-lg p-8 mb-6 border border-white/20">
-          <h3 className="text-xl font-semibold mb-6">Review Answers</h3>
-          <div className="space-y-8">
-            {answers.map((answer, index) => {
-              const card = shuffledCards[index];
-              const options = questionOptions[card.id] || [];
+        <div className="space-y-6">
+          <h3 className="text-2xl font-bold text-warm-brown px-2 mb-6">Review Answers</h3>
+          {answers.map((answer, index) => {
+            const card = shuffledCards[index];
+            const options = questionOptions[card.id] || [];
 
-              return (
-                <div
-                  key={card.id}
-                  className="rounded-lg border border-gray-200 overflow-hidden"
-                >
-                  {/* Question Header */}
-                  <div className="bg-gray-50 p-4 border-b border-gray-200">
-                    <p className="font-medium text-gray-900">
-                      Question {index + 1}: {card.front}
+            return (
+              <div
+                key={card.id}
+                className="bg-white rounded-2xl border border-warm-gray overflow-hidden shadow-sm hover:shadow-md transition-all"
+              >
+                {/* Question Header */}
+                <div className="bg-warm-cream/30 p-6 border-b border-warm-gray">
+                  <div className="flex items-start gap-4">
+                    <span className="flex-shrink-0 w-8 h-8 rounded-full bg-warm-brown/5 text-warm-brown flex items-center justify-center text-sm font-bold">
+                      {index + 1}
+                    </span>
+                    <p className="font-medium text-warm-brown text-lg pt-0.5">
+                      {card.front}
                     </p>
                   </div>
-
-                  {/* Answer Options */}
-                  <div className="p-4 space-y-3">
-                    {options.map((option, optionIndex) => {
-                      const isUserAnswer = answer.selectedAnswer === option;
-                      const isCorrectAnswer = card.back === option;
-
-                      let optionClass = "p-3 rounded-lg flex items-center gap-3 ";
-                      if (isUserAnswer && isCorrectAnswer) {
-                        optionClass += "bg-green-50 border-2 border-green-500";
-                      } else if (isUserAnswer && !isCorrectAnswer) {
-                        optionClass += "bg-red-50 border-2 border-red-500";
-                      } else if (isCorrectAnswer) {
-                        optionClass += "bg-green-50 border-2 border-green-500";
-                      } else {
-                        optionClass += "bg-gray-50 border-2 border-gray-200";
-                      }
-
-                      return (
-                        <div key={optionIndex} className={optionClass}>
-                          {isUserAnswer && isCorrectAnswer && (
-                            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                          )}
-                          {isUserAnswer && !isCorrectAnswer && (
-                            <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                          )}
-                          {!isUserAnswer && isCorrectAnswer && (
-                            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                          )}
-                          <span className={`flex-1 ${isUserAnswer || isCorrectAnswer ? 'font-medium' : ''
-                            }`}>
-                            {option}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
 
-        {/* Action Button */}
-        <div className="text-center mb-8">
-          <button
-            onClick={onExit}
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
-          >
-            <RotateCcw className="w-4 h-4" />
-            Back to Decks
-          </button>
+                {/* Answer Options */}
+                <div className="p-6 space-y-3">
+                  {options.map((option, optionIndex) => {
+                    const isUserAnswer = answer.selectedAnswer === option;
+                    const isCorrectAnswer = card.back === option;
+
+                    let optionClass = "p-4 rounded-xl flex items-center gap-4 transition-all ";
+                    if (isUserAnswer && isCorrectAnswer) {
+                      optionClass += "bg-warm-olive/10 border-2 border-warm-olive text-warm-brown";
+                    } else if (isUserAnswer && !isCorrectAnswer) {
+                      optionClass += "bg-red-50 border-2 border-red-200 text-red-800";
+                    } else if (isCorrectAnswer) {
+                      optionClass += "bg-warm-olive/10 border-2 border-warm-olive text-warm-brown";
+                    } else {
+                      optionClass += "bg-white border border-warm-gray text-warm-brown/60 opacity-60";
+                    }
+
+                    return (
+                      <div key={optionIndex} className={optionClass}>
+                        {isUserAnswer && isCorrectAnswer && (
+                          <CheckCircle className="w-5 h-5 text-warm-olive flex-shrink-0" />
+                        )}
+                        {isUserAnswer && !isCorrectAnswer && (
+                          <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                        )}
+                        {!isUserAnswer && isCorrectAnswer && (
+                          <CheckCircle className="w-5 h-5 text-warm-olive flex-shrink-0" />
+                        )}
+                        {!isUserAnswer && !isCorrectAnswer && (
+                          <div className="w-5 h-5" /> // Spacer
+                        )}
+                        <span className={`flex-1 ${isUserAnswer || isCorrectAnswer ? 'font-medium' : ''}`}>
+                          {option}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4">
-      <div className="mb-4">
-        <div className="flex justify-between text-sm text-gray-600 mb-2">
-          <span>Question {currentIndex + 1} of {totalQuestions}</span>
-          <span>{Math.round(((currentIndex + 1) / totalQuestions) * 100)}%</span>
+    <div className="max-w-4xl mx-auto p-4 min-h-[60vh] flex flex-col justify-center mb-8">
+      <div className="mb-12">
+        <div className="flex justify-between items-center text-sm font-medium text-warm-brown/60 mb-4">
+          <span className="bg-warm-brown/5 px-4 py-1.5 rounded-full">
+            Question {currentIndex + 1} / {totalQuestions}
+          </span>
+          <span>{Math.round(((currentIndex + 1) / totalQuestions) * 100)}% completed</span>
         </div>
-        <div className="w-full h-2 bg-gray-200 rounded-full">
+        <div className="w-full h-2 bg-warm-gray/30 rounded-full overflow-hidden">
           <div
-            className="h-full bg-indigo-600 rounded-full transition-all duration-300"
+            className="h-full bg-warm-orange rounded-full transition-all duration-500 ease-out"
             style={{ width: `${((currentIndex + 1) / totalQuestions) * 100}%` }}
           />
         </div>
@@ -248,46 +226,46 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
       <AnimatePresence mode="wait">
         <motion.div
           key={currentCard.id}
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.3 }}
-          className="bg-white rounded-xl shadow-lg p-8 mb-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="w-full"
         >
-          <h3 className="text-xl font-semibold text-gray-800 mb-6">
+          <h3 className="text-3xl md:text-4xl font-bold text-warm-brown text-center mb-16 leading-tight">
             {currentCard.front}
           </h3>
 
-          {isLoadingOptions ? (
-            <div className="space-y-4">
+          {isLoading || options.length === 0 ? (
+            <div className="flex flex-col gap-4">
               {[1, 2, 3, 4].map((index) => (
                 <div key={index} className="animate-pulse">
-                  <div className="w-full h-[60px] rounded-lg bg-gray-200" />
+                  <div className="w-full h-[88px] rounded-2xl bg-warm-gray/50" />
                 </div>
               ))}
             </div>
           ) : (
             <motion.div
-              className="space-y-4"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col gap-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
             >
               {options.map((option, index) => {
                 const isSelected = selectedAnswer === option;
                 const isCorrect = option === currentCard.back;
 
-                let buttonClass = 'w-full text-left p-4 rounded-lg border-2 transition-all';
+                let buttonClass = 'w-full text-left p-6 rounded-2xl border-2 transition-all duration-200 group relative overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-1';
                 if (!selectedAnswer) {
-                  buttonClass += ' hover:border-indigo-600 border-gray-200';
+                  buttonClass += ' hover:border-warm-orange hover:bg-warm-cream/30 border-warm-gray bg-white text-warm-brown';
                 } else if (isSelected) {
                   buttonClass += isCorrect
-                    ? ' border-green-500 bg-green-50'
-                    : ' border-red-500 bg-red-50';
+                    ? ' border-warm-olive bg-warm-olive/10 text-warm-brown'
+                    : ' border-red-200 bg-red-50 text-red-800';
                 } else if (isCorrect) {
-                  buttonClass += ' border-green-500 bg-green-50';
+                  buttonClass += ' border-warm-olive bg-warm-olive/10 text-warm-brown';
                 } else {
-                  buttonClass += ' border-gray-200 opacity-50';
+                  buttonClass += ' border-warm-gray opacity-40 bg-gray-50';
                 }
 
                 return (
@@ -297,15 +275,18 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
                     disabled={selectedAnswer !== null}
                     className={buttonClass}
                   >
-                    <div className="flex items-center gap-3">
-                      {selectedAnswer && (isSelected || isCorrect) && (
-                        isCorrect ? (
-                          <CheckCircle className="w-5 h-5 text-green-500" />
+                    <div className="flex items-center gap-4 relative z-10">
+                      <div className={`w-8 h-8 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors ${selectedAnswer && (isSelected || isCorrect)
+                        ? isCorrect ? 'border-warm-olive bg-warm-olive text-white' : 'border-red-500 bg-red-500 text-white'
+                        : 'border-warm-gray group-hover:border-warm-orange text-warm-brown/40 group-hover:text-warm-orange'
+                        }`}>
+                        {selectedAnswer && (isSelected || isCorrect) ? (
+                          isCorrect ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />
                         ) : (
-                          <XCircle className="w-5 h-5 text-red-500" />
-                        )
-                      )}
-                      <span>{option}</span>
+                          <span className="text-sm font-bold">{String.fromCharCode(65 + index)}</span>
+                        )}
+                      </div>
+                      <span className="text-lg font-medium leading-snug">{option}</span>
                     </div>
                   </button>
                 );

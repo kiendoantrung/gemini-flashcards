@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Upload, X } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import { Avatar } from './Avatar';
-import { uploadAvatar, deleteAvatar } from '../services/storageService';
+import { uploadAvatar } from '../services/storageService';
 
 interface AvatarUploadProps {
   userId: string;
@@ -31,31 +31,15 @@ export function AvatarUpload({ userId, currentAvatarUrl, name, onAvatarChange }:
     }
   };
 
-  const handleDelete = async () => {
-    if (!currentAvatarUrl) return;
-    
-    setIsUploading(true);
-    setError(null);
-
-    try {
-      await deleteAvatar(userId, currentAvatarUrl);
-      onAvatarChange(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete avatar');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   return (
     <div className="flex flex-col items-center gap-4">
-      <div className="relative">
-        <Avatar name={name} imageUrl={currentAvatarUrl} size="lg" />
+      <div className="relative group">
+        <Avatar name={name} imageUrl={currentAvatarUrl} size="xl" />
         <label
           htmlFor="avatar-upload"
-          className="absolute bottom-0 right-0 p-1 bg-white rounded-full shadow-md cursor-pointer hover:bg-gray-50"
+          className="absolute -bottom-2 -right-2 p-2.5 bg-white rounded-full shadow-lg cursor-pointer hover:bg-warm-cream transition-all border border-warm-gray group-hover:scale-110 duration-200 z-10"
         >
-          <Upload className="w-4 h-4 text-gray-600" />
+          <Upload className="w-5 h-5 text-warm-brown" />
           <input
             id="avatar-upload"
             type="file"
@@ -65,22 +49,13 @@ export function AvatarUpload({ userId, currentAvatarUrl, name, onAvatarChange }:
             disabled={isUploading}
           />
         </label>
-        {currentAvatarUrl && (
-          <button
-            onClick={handleDelete}
-            disabled={isUploading}
-            className="absolute top-0 right-0 p-1 bg-white rounded-full shadow-md hover:bg-gray-50"
-          >
-            <X className="w-4 h-4 text-gray-600" />
-          </button>
-        )}
       </div>
       {isUploading && (
-        <div className="text-sm text-gray-600">Uploading...</div>
+        <div className="text-sm text-warm-brown/70 animate-pulse">Uploading...</div>
       )}
       {error && (
-        <div className="text-sm text-red-600">{error}</div>
+        <div className="text-sm text-red-600 bg-red-50 px-3 py-1 rounded-full">{error}</div>
       )}
     </div>
   );
-} 
+}
