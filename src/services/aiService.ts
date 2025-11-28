@@ -1,4 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
+import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import type { Deck, Flashcard } from "../types/flashcard";
 
 const API_KEY = import.meta.env.VITE_GOOGLE_AI_KEY;
@@ -9,132 +11,173 @@ if (!API_KEY) {
 
 const genAI = new GoogleGenAI({ apiKey: API_KEY });
 
-async function generateDistractorsFromAI(
-  question: string,
-  correctAnswer: string
-): Promise<string[]> {
-  const prompt = `For the question "${question}" with correct answer "${correctAnswer}", 
-    generate 3 plausible but incorrect answer choices. Return them as a JSON array of strings.`;
+// Zod Schemas for Structured Outputs
+const flashcardSchema = z.object({
+  front: z.string().describe("The question or front side of the flashcard"),
+  back: z.string().describe("The answer or back side of the flashcard"),
+});
 
-  const result = await genAI.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: prompt,
-  });
-  const text = result.text;
+const deckSchema = z.object({
+  title: z.string().describe("Title of the flashcard deck"),
+  description: z.string().describe("Brief description of the topic"),
+  cards: z.array(flashcardSchema).describe("Array of flashcards"),
+});
 
-  if (!text) {
-    throw new Error("Empty response from AI model");
+// Retry configuration
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  baseDelay: 1000, // 1 second
+  maxDelay: 10000, // 10 seconds
+};
+
+// Helper function to delay execution
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Helper function to check if error is retryable
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    // Retry on network errors, rate limits, and server errors
+    return (
+      message.includes('network') ||
+      message.includes('timeout') ||
+      message.includes('fetch') ||
+      message.includes('rate limit') ||
+      message.includes('429') ||
+      message.includes('500') ||
+      message.includes('502') ||
+      message.includes('503') ||
+      message.includes('504')
+    );
+  }
+  return false;
+}
+
+// Generic retry wrapper for async functions
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  operationName: string
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetryableError(error) || attempt === RETRY_CONFIG.maxRetries) {
+        throw error;
+      }
+
+      // Exponential backoff with jitter
+      const backoffDelay = Math.min(
+        RETRY_CONFIG.baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000,
+        RETRY_CONFIG.maxDelay
+      );
+
+      console.warn(
+        `${operationName} failed (attempt ${attempt}/${RETRY_CONFIG.maxRetries}). Retrying in ${Math.round(backoffDelay)}ms...`,
+        error instanceof Error ? error.message : error
+      );
+
+      await delay(backoffDelay);
+    }
   }
 
-  // Clean the response text before parsing
-  const cleanText = text.replace(/```json\n?|```/g, "").trim();
-  return JSON.parse(cleanText);
+  throw lastError;
 }
 
 export async function generateDeck(
   topic: string,
   numQuestions: number = 10
 ): Promise<Deck> {
-  const prompt = `Create a set of flashcards about "${topic}". 
-  Return a JSON object with the following structure:
-  {
-    "title": "Topic Title",
-    "description": "Brief description of the topic",
-    "cards": [
-      { "front": "Question", "back": "Answer" }
-    ]
-  }
-  Include ${numQuestions} cards with clear, concise questions and answers.`;
+  const prompt = `Create a set of ${numQuestions} flashcards about "${topic}".
 
-  const result = await genAI.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: prompt,
-  });
+RULES:
+- Respond in the SAME LANGUAGE as the topic
+- Questions should test understanding, not just recall
+- Answers should be concise but complete (1-3 sentences)`;
+
+  const result = await withRetry(
+    () => genAI.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        responseSchema: zodToJsonSchema(deckSchema as any) as Record<string, unknown>,
+      },
+    }),
+    'generateDeck'
+  );
+
   const text = result.text;
-
   if (!text) {
     throw new Error("Empty response from AI model");
   }
 
-  // Clean the response text before parsing
-  const cleanText = text.replace(/```json\n?|```/g, "").trim();
-  let data;
-
-  try {
-    data = JSON.parse(cleanText);
-  } catch (error) {
-    throw new Error(`Invalid response format from AI service: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-
-  if (!data.title || !data.description || !Array.isArray(data.cards)) {
-    throw new Error("Missing required fields in AI response");
-  }
+  const data = deckSchema.parse(JSON.parse(text));
 
   if (data.cards.length === 0) {
     throw new Error("No flashcards generated");
   }
 
-  try {
-    return {
+  return {
+    id: crypto.randomUUID(),
+    title: data.title,
+    description: data.description,
+    cards: data.cards.map((card) => ({
+      ...card,
       id: crypto.randomUUID(),
-      title: data.title,
-      description: data.description,
-      cards: data.cards.map((card: Omit<Flashcard, "id">) => ({
-        ...card,
-        id: crypto.randomUUID(),
-      })),
-    };
-  } catch (error) {
-    throw new Error(`Failed to parse AI response: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
-
-export async function generateDistractors(
-  question: string,
-  correctAnswer: string
-): Promise<string[]> {
-  try {
-    const distractors = await generateDistractorsFromAI(
-      question,
-      correctAnswer
-    );
-
-    return distractors;
-  } catch (error) {
-    console.error("Error generating distractors:", error);
-    return [];
-  }
+    })),
+  };
 }
 
 async function generateBatchDistractorsFromAI(
   cards: Flashcard[]
 ): Promise<Record<string, string[]>> {
   const cardsList = cards.map(c => ({ id: c.id, question: c.front, answer: c.back }));
-  const prompt = `For the following flashcards, generate 3 plausible but incorrect answer choices (distractors) for each.
-    Return a JSON object where keys are the card IDs and values are arrays of 3 distractor strings.
-    
-    Cards:
-    ${JSON.stringify(cardsList, null, 2)}
-    
-    Example output structure:
-    {
-      "card_id_1": ["distractor1", "distractor2", "distractor3"],
-      "card_id_2": ["distractor1", "distractor2", "distractor3"]
-    }`;
+  
+  const prompt = `Generate 3 plausible but INCORRECT answer choices (distractors) for each flashcard.
 
-  const result = await genAI.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: prompt,
-  });
+RULES:
+- Distractors must be in the SAME LANGUAGE as the correct answer
+- Distractors should be similar in length and style to the correct answer
+- Distractors should be believable but clearly wrong
+
+Cards:
+${JSON.stringify(cardsList, null, 2)}`;
+
+  // Create dynamic schema based on card IDs
+  const dynamicSchema = z.object(
+    Object.fromEntries(
+      cards.map(card => [
+        card.id,
+        z.array(z.string()).length(3).describe(`3 distractors for card: ${card.front}`)
+      ])
+    )
+  );
+
+  const result = await withRetry(
+    () => genAI.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        responseSchema: zodToJsonSchema(dynamicSchema as any) as Record<string, unknown>,
+      },
+    }),
+    'generateBatchDistractors'
+  );
+
   const text = result.text;
-
   if (!text) {
     throw new Error("Empty response from AI model");
   }
 
-  // Clean the response text before parsing
-  const cleanText = text.replace(/```json\n?|```/g, "").trim();
-  return JSON.parse(cleanText);
+  return dynamicSchema.parse(JSON.parse(text));
 }
 
 export async function generateBatchDistractors(

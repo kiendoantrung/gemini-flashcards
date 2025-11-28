@@ -1,4 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
+import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 import type { Flashcard } from "../types/flashcard";
 import { read, utils } from "xlsx";
@@ -8,6 +10,74 @@ const genAI = new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_AI_KEY });
 // Set the workerSrc to a CDN version of the worker script
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+// Zod Schema for Structured Output
+const flashcardSchema = z.object({
+  front: z.string().describe("The question or front side of the flashcard"),
+  back: z.string().describe("The answer or back side of the flashcard"),
+});
+
+const flashcardsArraySchema = z.array(flashcardSchema).describe("Array of flashcards");
+
+// Retry configuration
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  baseDelay: 1000,
+  maxDelay: 10000,
+};
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('network') ||
+      message.includes('timeout') ||
+      message.includes('fetch') ||
+      message.includes('rate limit') ||
+      message.includes('429') ||
+      message.includes('500') ||
+      message.includes('502') ||
+      message.includes('503') ||
+      message.includes('504')
+    );
+  }
+  return false;
+}
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  operationName: string
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetryableError(error) || attempt === RETRY_CONFIG.maxRetries) {
+        throw error;
+      }
+
+      const backoffDelay = Math.min(
+        RETRY_CONFIG.baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000,
+        RETRY_CONFIG.maxDelay
+      );
+
+      console.warn(
+        `${operationName} failed (attempt ${attempt}/${RETRY_CONFIG.maxRetries}). Retrying in ${Math.round(backoffDelay)}ms...`,
+        error instanceof Error ? error.message : error
+      );
+
+      await delay(backoffDelay);
+    }
+  }
+
+  throw lastError;
+}
 
 export async function extractTextFromFile(file: File): Promise<string> {
   if (file.type === "application/pdf") {
@@ -111,44 +181,38 @@ export async function generateQAFromText(
   text: string,
   numQuestions: number = 10
 ): Promise<Array<Omit<Flashcard, "id">>> {
-  const prompt = `Create ${numQuestions} flashcard questions and answers from this text. 
-    Return only a JSON array with objects in this format, with no additional text or formatting:
-    [
-      { "front": "Question about the content", "back": "Answer from the content" }
-    ]
-    Make questions clear and concise. Answers should be comprehensive but brief.
-    Text content:
-    ${text}`;
+  const prompt = `Create ${numQuestions} flashcard questions and answers from this text.
+
+RULES:
+- Respond in the SAME LANGUAGE as the source text
+- Focus on KEY CONCEPTS and important facts
+- Questions should test understanding, not trivial details
+- Answers should be concise but complete (1-3 sentences)
+- Avoid duplicate or overlapping questions
+
+Source text:
+${text}`;
 
   try {
-    const result = await genAI.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-    });
-    let responseText = result.text;
+    const result = await withRetry(
+      () => genAI.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          responseSchema: zodToJsonSchema(flashcardsArraySchema as any) as Record<string, unknown>,
+        },
+      }),
+      'generateQAFromText'
+    );
 
+    const responseText = result.text;
     if (!responseText) {
       throw new Error("Empty response from AI model");
     }
 
-    // Remove any markdown or additional formatting, clean up common JSON errors
-    responseText = responseText
-      .replace(/```(?:json)?/g, "") // Remove markdown code block markers
-      .replace(/,\s*([\]}])/g, "$1") // Remove trailing commas
-      .replace(/\s*([\]}])/g, "$1"); // Remove extra whitespace
-
-    let cards;
-    try {
-      cards = JSON.parse(responseText);
-    } catch (jsonError: unknown) {
-      throw new Error(
-        `JSON parsing error after cleaning: ${(jsonError as Error).message}`
-      );
-    }
-
-    if (!Array.isArray(cards)) {
-      throw new Error("Invalid AI response format");
-    }
+    const cards = flashcardsArraySchema.parse(JSON.parse(responseText));
 
     return cards.filter(
       (card) =>
