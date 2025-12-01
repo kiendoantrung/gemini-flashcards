@@ -37,9 +37,9 @@ export function AvatarUpload({ userId, currentAvatarUrl, name, onAvatarChange }:
         <Avatar name={name} imageUrl={currentAvatarUrl} size="xl" />
         <label
           htmlFor="avatar-upload"
-          className="absolute -bottom-2 -right-2 p-2.5 bg-white rounded-full shadow-lg cursor-pointer hover:bg-warm-cream transition-all border border-warm-gray group-hover:scale-110 duration-200 z-10"
+          className="absolute -bottom-2 -right-2 p-2.5 bg-accent-yellow rounded-full cursor-pointer hover:bg-yellow-300 transition-all border-2 border-dark neo-shadow group-hover:scale-110 duration-200 z-10"
         >
-          <Upload className="w-5 h-5 text-warm-brown" />
+          <Upload className="w-5 h-5 text-dark" />
           <input
             id="avatar-upload"
             type="file"
@@ -51,10 +51,10 @@ export function AvatarUpload({ userId, currentAvatarUrl, name, onAvatarChange }:
         </label>
       </div>
       {isUploading && (
-        <div className="text-sm text-warm-brown/70 animate-pulse">Uploading...</div>
+        <div className="text-sm text-dark/70 animate-pulse font-semibold">📤 Uploading...</div>
       )}
       {error && (
-        <div className="text-sm text-red-600 bg-red-50 px-3 py-1 rounded-full">{error}</div>
+        <div className="text-sm text-dark bg-accent-pink/50 px-3 py-1 rounded-full border-2 border-dark">⚠️ {error}</div>
       )}
     </div>
   );

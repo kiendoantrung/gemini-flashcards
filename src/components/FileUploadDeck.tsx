@@ -81,21 +81,23 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
   return (
     <div className="space-y-8">
       <div className="space-y-6">
-        <div className="bg-white/80 p-6 rounded-xl border border-warm-gray hover:border-warm-orange/30 transition-colors">
-          <h4 className="text-sm font-semibold text-warm-brown mb-4 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-warm-orange" />
+        <div className="bg-neo-cream p-6 rounded-neo-md border-2 border-neo-border hover:shadow-neo transition-all">
+          <h4 className="text-sm font-bold text-neo-charcoal mb-4 flex items-center gap-2">
+            <div className="w-8 h-8 bg-neo-green/20 rounded-neo-sm border-2 border-neo-border flex items-center justify-center">
+              <FileText className="w-4 h-4 text-neo-green" />
+            </div>
             Generate Q&A from Text Content
           </h4>
           <div className="mb-4">
             <label className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-warm-brown/80">Number of questions:</span>
+              <span className="text-xs font-bold text-neo-charcoal">Number of questions:</span>
               <input
                 type="number"
                 min="1"
                 max="50"
                 value={numQuestions}
                 onChange={(e) => setNumQuestions(Number(e.target.value))}
-                className="w-20 px-2 py-1.5 border border-warm-gray rounded-lg bg-white text-warm-brown text-center text-sm focus:ring-warm-orange focus:border-warm-orange"
+                className="w-20 px-2 py-1.5 border-2 border-neo-border rounded-neo-sm bg-white text-neo-charcoal text-center text-sm font-bold focus:ring-neo-green focus:border-neo-green"
               />
             </label>
           </div>
@@ -104,26 +106,29 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
               type="file"
               accept=".txt,.pdf,.doc,.docx"
               onChange={(e) => handleFileUpload(e, 'text')}
-              className="block w-full text-sm text-warm-brown/60
+              className="block w-full text-sm text-neo-gray font-medium
                 file:mr-4 file:py-2.5 file:px-4
-                file:rounded-lg file:border-0
-                file:text-sm file:font-semibold
-                file:bg-warm-orange file:text-white
-                hover:file:bg-warm-brown
+                file:rounded-full file:border-2 file:border-neo-border
+                file:text-sm file:font-bold
+                file:bg-neo-green file:text-white
+                hover:file:bg-neo-charcoal
                 file:transition-colors file:duration-200
+                file:shadow-neo hover:file:shadow-neo-hover
                 cursor-pointer"
               disabled={isLoading}
             />
           </div>
-          <p className="mt-2 text-xs text-warm-brown/60 flex items-center">
-            <Upload className="w-3 h-3 mr-1" />
+          <p className="mt-2 text-xs text-neo-gray flex items-center font-medium">
+            <Upload className="w-3 h-3 mr-1 text-neo-green" />
             Upload PDF, DOC, or TXT files
           </p>
         </div>
 
-        <div className="bg-white/80 p-6 rounded-xl border border-warm-gray hover:border-warm-orange/30 transition-colors">
-          <h4 className="text-sm font-semibold text-warm-brown mb-4 flex items-center gap-2">
-            <FileSpreadsheet className="w-4 h-4 text-warm-olive" />
+        <div className="bg-neo-cream p-6 rounded-neo-md border-2 border-neo-border hover:shadow-neo transition-all">
+          <h4 className="text-sm font-bold text-neo-charcoal mb-4 flex items-center gap-2">
+            <div className="w-8 h-8 bg-neo-accent-blue/30 rounded-neo-sm border-2 border-neo-border flex items-center justify-center">
+              <FileSpreadsheet className="w-4 h-4 text-neo-charcoal" />
+            </div>
             Import Existing Q&A Pairs
           </h4>
           <div className="relative group">
@@ -131,27 +136,28 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
               type="file"
               accept=".csv,.xlsx,.xls,.json"
               onChange={(e) => handleFileUpload(e, 'qa')}
-              className="block w-full text-sm text-warm-brown/60
+              className="block w-full text-sm text-neo-gray font-medium
                 file:mr-4 file:py-2.5 file:px-4
-                file:rounded-lg file:border-0
-                file:text-sm file:font-semibold
-                file:bg-warm-olive file:text-white
-                hover:file:bg-warm-brown
+                file:rounded-full file:border-2 file:border-neo-border
+                file:text-sm file:font-bold
+                file:bg-neo-accent-blue file:text-neo-charcoal
+                hover:file:bg-neo-charcoal hover:file:text-white
                 file:transition-colors file:duration-200
+                file:shadow-neo hover:file:shadow-neo-hover
                 cursor-pointer"
               disabled={isLoading}
             />
           </div>
-          <p className="mt-2 text-xs text-warm-brown/60 flex items-center">
-            <Upload className="w-3 h-3 mr-1" />
+          <p className="mt-2 text-xs text-neo-gray flex items-center font-medium">
+            <Upload className="w-3 h-3 mr-1 text-neo-accent-blue" />
             Import CSV, Excel, or JSON files
           </p>
         </div>
       </div>
 
       {error && (
-        <div className="p-4 bg-red-50 rounded-xl border border-red-100">
-          <p className="text-red-600 text-sm flex items-center">
+        <div className="p-4 bg-neo-pink/20 rounded-neo-md border-2 border-red-300">
+          <p className="text-red-600 text-sm flex items-center font-medium">
             <AlertCircle className="w-4 h-4 mr-2" />
             {error}
           </p>
@@ -159,8 +165,8 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
       )}
 
       {isLoading && (
-        <div className="p-4 bg-warm-orange/10 rounded-xl border border-warm-orange/20">
-          <p className="text-warm-orange text-sm flex items-center">
+        <div className="p-4 bg-neo-yellow/20 rounded-neo-md border-2 border-neo-yellow">
+          <p className="text-neo-charcoal text-sm flex items-center font-medium">
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             Processing file...
           </p>

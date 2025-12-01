@@ -49,9 +49,9 @@ export function ProfileEditor({ user, onUpdate, onClose }: ProfileEditorProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-warm-brown/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl border border-warm-gray animate-scale-in">
-        <h2 className="text-3xl font-bold mb-8 text-center text-warm-brown">Edit Profile</h2>
+    <div className="fixed inset-0 bg-dark/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-neo-cream rounded-2xl max-w-md w-full p-8 border-2 border-dark neo-shadow animate-scale-in">
+        <h2 className="text-3xl font-heading font-bold mb-8 text-center text-dark">✏️ Edit Profile</h2>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="flex justify-center mb-8">
@@ -64,66 +64,66 @@ export function ProfileEditor({ user, onUpdate, onClose }: ProfileEditorProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-warm-brown mb-2">
+            <label className="block text-sm font-semibold text-dark mb-2">
               Name
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-3 border border-warm-gray rounded-lg focus:ring-2 focus:ring-warm-orange focus:border-warm-orange transition-all text-warm-brown"
+              className="w-full px-4 py-3 border-2 border-dark rounded-xl focus:ring-2 focus:ring-primary-green focus:border-primary-green transition-all text-dark bg-white neo-shadow"
               placeholder="Your name"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-warm-brown mb-2">
+            <label className="block text-sm font-semibold text-dark mb-2">
               New Password
             </label>
             <input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-4 py-3 border border-warm-gray rounded-lg focus:ring-2 focus:ring-warm-orange focus:border-warm-orange transition-all text-warm-brown"
+              className="w-full px-4 py-3 border-2 border-dark rounded-xl focus:ring-2 focus:ring-primary-green focus:border-primary-green transition-all text-dark bg-white neo-shadow"
               placeholder="Leave blank to keep current password"
             />
           </div>
 
           {newPassword && (
             <div className="animate-fade-in">
-              <label className="block text-sm font-semibold text-warm-brown mb-2">
+              <label className="block text-sm font-semibold text-dark mb-2">
                 Confirm Password
               </label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-warm-gray rounded-lg focus:ring-2 focus:ring-warm-orange focus:border-warm-orange transition-all text-warm-brown"
+                className="w-full px-4 py-3 border-2 border-dark rounded-xl focus:ring-2 focus:ring-primary-green focus:border-primary-green transition-all text-dark bg-white neo-shadow"
                 placeholder="Confirm new password"
               />
             </div>
           )}
 
           {error && (
-            <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-100 text-center">
-              {error}
+            <div className="text-dark text-sm bg-accent-pink/30 p-3 rounded-xl border-2 border-dark text-center neo-shadow">
+              ⚠️ {error}
             </div>
           )}
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-warm-gray/30">
+          <div className="flex justify-end gap-3 pt-4 border-t-2 border-dark/10">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 text-warm-brown hover:bg-warm-cream rounded-lg transition-colors font-medium"
+              className="px-6 py-2.5 text-dark bg-white border-2 border-dark rounded-full font-semibold hover:bg-gray-100 transition-all neo-shadow hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="px-6 py-2.5 text-white bg-warm-orange hover:bg-warm-brown rounded-lg shadow-md hover:shadow-lg transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2.5 text-dark bg-primary-green border-2 border-dark rounded-full font-semibold hover:bg-green-400 transition-all neo-shadow hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? 'Saving...' : 'Save Changes'}
+              {isLoading ? '💾 Saving...' : '💾 Save Changes'}
             </button>
           </div>
         </form>

@@ -50,7 +50,7 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div>
-        <label className="block text-sm font-semibold text-warm-brown mb-2">
+        <label className="block text-sm font-bold text-neo-charcoal mb-2">
           Topic Details
         </label>
         <input
@@ -59,18 +59,18 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
           placeholder="Enter a topic (e.g., 'Basic Python Concepts')"
-          className="w-full px-4 py-3 rounded-xl border border-warm-gray bg-white/80 focus:ring-2 focus:ring-warm-orange focus:border-warm-orange text-warm-brown placeholder-warm-brown/40 transition-all"
+          className="w-full px-4 py-3 rounded-neo-md border-2 border-neo-border bg-neo-cream focus:ring-2 focus:ring-neo-green focus:border-neo-green text-neo-charcoal placeholder-neo-gray/60 transition-all font-medium"
           disabled={isLoading}
         />
-        <p className="mt-2 text-xs text-warm-brown/60 flex items-center">
-          <Wand2 className="w-3 h-3 mr-1" />
+        <p className="mt-2 text-xs text-neo-gray flex items-center font-medium">
+          <Wand2 className="w-3 h-3 mr-1 text-neo-green" />
           Be specific about the topic to get better results
         </p>
       </div>
 
       <div>
         <label className="flex items-center justify-between mb-2">
-          <span className="text-sm font-semibold text-warm-brown">Number of questions:</span>
+          <span className="text-sm font-bold text-neo-charcoal">Number of questions:</span>
           <input
             type="number"
             id="numQuestions"
@@ -78,26 +78,26 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
             max="20"
             value={numQuestions}
             onChange={(e) => setNumQuestions(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-            className="w-24 px-3 py-2 border border-warm-gray rounded-lg bg-white/80 focus:ring-warm-orange focus:border-warm-orange text-warm-brown text-center"
+            className="w-24 px-3 py-2 border-2 border-neo-border rounded-neo-md bg-neo-cream focus:ring-neo-green focus:border-neo-green text-neo-charcoal text-center font-bold"
             disabled={isLoading}
           />
         </label>
-        <p className="mt-1 text-xs text-warm-brown/60">
+        <p className="mt-1 text-xs text-neo-gray font-medium">
           Maximum 20 questions per deck
         </p>
       </div>
 
       {error && (
-        <div className="p-4 bg-red-50 rounded-xl border border-red-100">
-          <p className="text-red-600 text-sm flex items-center">
+        <div className="p-4 bg-neo-pink/20 rounded-neo-md border-2 border-red-300">
+          <p className="text-red-600 text-sm font-medium">
             {error}
           </p>
         </div>
       )}
 
       {isLoading && retryCount > 0 && (
-        <div className="p-4 bg-warm-orange/10 rounded-xl border border-warm-orange/20">
-          <p className="text-warm-orange text-sm flex items-center">
+        <div className="p-4 bg-neo-yellow/20 rounded-neo-md border-2 border-neo-yellow">
+          <p className="text-neo-charcoal text-sm font-medium">
             Retry attempt {retryCount} of {MAX_RETRIES}...
           </p>
         </div>
@@ -106,7 +106,7 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
       <button
         type="submit"
         disabled={isLoading || !topic.trim()}
-        className="w-full px-4 py-3.5 rounded-xl bg-warm-orange text-white hover:bg-warm-brown disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center font-semibold shadow-lg shadow-orange-200/50 hover:shadow-xl hover:translate-y-[-1px]"
+        className="w-full px-4 py-3.5 rounded-full bg-neo-green text-white font-bold border-2 border-neo-border shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
       >
         {isLoading ? (
           <>

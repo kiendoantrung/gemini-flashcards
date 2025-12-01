@@ -1,6 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Inter', 'Roboto', 'Open Sans', sans-serif;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Nunito', sans-serif;
+  }
+}
 
 @layer utilities {
   .perspective-1000 {
@@ -37,5 +49,22 @@
     100% {
       background-position: 200% 0;
     }
+  }
+
+  /* Neo-Brutalism utilities */
+  .neo-border {
+    border: 2px solid #111827;
+  }
+
+  .neo-shadow {
+    box-shadow: 3px 3px 0px 0px #111827;
+  }
+
+  .neo-shadow-hover {
+    box-shadow: 5px 5px 0px 0px #111827;
+  }
+
+  .neo-shadow-active {
+    box-shadow: 1px 1px 0px 0px #111827;
   }
 }

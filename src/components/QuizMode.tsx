@@ -111,25 +111,25 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
         <div className="text-center mb-12 animate-fade-in">
-          <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-warm-orange/10 text-warm-orange mb-6 shadow-sm">
+          <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-neo-yellow/30 border-2 border-neo-border shadow-neo text-neo-charcoal mb-6">
             <Trophy className="w-12 h-12" />
           </div>
-          <h2 className="text-4xl font-bold text-warm-brown mb-2">Quiz Complete!</h2>
-          <p className="text-warm-brown/60 text-lg">Here's how you did</p>
+          <h2 className="text-4xl font-heading font-extrabold text-neo-charcoal mb-2">Quiz Complete!</h2>
+          <p className="text-neo-gray text-lg">Here's how you did</p>
         </div>
 
         {/* Score Summary */}
-        <div className="bg-white rounded-3xl shadow-sm border border-warm-gray p-10 mb-10 text-center animate-scale-in">
-          <div className="text-8xl font-bold text-warm-brown mb-6 tracking-tight">
+        <div className="bg-white rounded-neo-xl border-2 border-neo-border shadow-neo-lg p-10 mb-10 text-center animate-scale-in">
+          <div className="text-8xl font-heading font-extrabold text-neo-charcoal mb-6 tracking-tight">
             {percentage}%
           </div>
-          <p className="text-2xl text-warm-brown/80 mb-10">
-            You got <span className="font-bold text-warm-orange">{score}</span> out of <span className="font-bold">{totalQuestions}</span> questions correct
+          <p className="text-2xl text-neo-gray mb-10">
+            You got <span className="font-bold text-neo-green">{score}</span> out of <span className="font-bold">{totalQuestions}</span> questions correct
           </p>
 
           <button
             onClick={onExit}
-            className="inline-flex items-center gap-2 px-10 py-4 rounded-full bg-warm-orange text-white hover:bg-warm-brown transition-all shadow-lg shadow-orange-200/50 hover:shadow-xl hover:-translate-y-1 font-medium text-lg"
+            className="inline-flex items-center gap-2 px-10 py-4 rounded-full bg-neo-green text-white font-bold border-2 border-neo-border shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all text-lg"
           >
             <RotateCcw className="w-5 h-5" />
             Back to Decks
@@ -138,7 +138,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
 
         {/* Detailed Review */}
         <div className="space-y-6">
-          <h3 className="text-2xl font-bold text-warm-brown px-2 mb-6">Review Answers</h3>
+          <h3 className="text-2xl font-heading font-bold text-neo-charcoal px-2 mb-6">Review Answers</h3>
           {answers.map((answer, index) => {
             const card = shuffledCards[index];
             const options = questionOptions[card.id] || [];
@@ -146,15 +146,15 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
             return (
               <div
                 key={card.id}
-                className="bg-white rounded-2xl border border-warm-gray overflow-hidden shadow-sm hover:shadow-md transition-all"
+                className="bg-white rounded-neo-lg border-2 border-neo-border overflow-hidden shadow-neo hover:shadow-neo-hover transition-all"
               >
                 {/* Question Header */}
-                <div className="bg-warm-cream/30 p-6 border-b border-warm-gray">
+                <div className="bg-neo-cream p-6 border-b-2 border-neo-border">
                   <div className="flex items-start gap-4">
-                    <span className="flex-shrink-0 w-8 h-8 rounded-full bg-warm-brown/5 text-warm-brown flex items-center justify-center text-sm font-bold">
+                    <span className="flex-shrink-0 w-8 h-8 rounded-full bg-neo-accent-blue border-2 border-neo-border text-neo-charcoal flex items-center justify-center text-sm font-bold">
                       {index + 1}
                     </span>
-                    <p className="font-medium text-warm-brown text-lg pt-0.5">
+                    <p className="font-heading font-bold text-neo-charcoal text-lg pt-0.5">
                       {card.front}
                     </p>
                   </div>
@@ -166,32 +166,32 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
                     const isUserAnswer = answer.selectedAnswer === option;
                     const isCorrectAnswer = card.back === option;
 
-                    let optionClass = "p-4 rounded-xl flex items-center gap-4 transition-all ";
+                    let optionClass = "p-4 rounded-neo-md flex items-center gap-4 transition-all border-2 ";
                     if (isUserAnswer && isCorrectAnswer) {
-                      optionClass += "bg-warm-olive/10 border-2 border-warm-olive text-warm-brown";
+                      optionClass += "bg-neo-green/10 border-neo-green text-neo-charcoal";
                     } else if (isUserAnswer && !isCorrectAnswer) {
-                      optionClass += "bg-red-50 border-2 border-red-200 text-red-800";
+                      optionClass += "bg-neo-pink/20 border-red-300 text-red-800";
                     } else if (isCorrectAnswer) {
-                      optionClass += "bg-warm-olive/10 border-2 border-warm-olive text-warm-brown";
+                      optionClass += "bg-neo-green/10 border-neo-green text-neo-charcoal";
                     } else {
-                      optionClass += "bg-white border border-warm-gray text-warm-brown/60 opacity-60";
+                      optionClass += "bg-white border-neo-border/30 text-neo-gray opacity-60";
                     }
 
                     return (
                       <div key={optionIndex} className={optionClass}>
                         {isUserAnswer && isCorrectAnswer && (
-                          <CheckCircle className="w-5 h-5 text-warm-olive flex-shrink-0" />
+                          <CheckCircle className="w-5 h-5 text-neo-green flex-shrink-0" />
                         )}
                         {isUserAnswer && !isCorrectAnswer && (
                           <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
                         )}
                         {!isUserAnswer && isCorrectAnswer && (
-                          <CheckCircle className="w-5 h-5 text-warm-olive flex-shrink-0" />
+                          <CheckCircle className="w-5 h-5 text-neo-green flex-shrink-0" />
                         )}
                         {!isUserAnswer && !isCorrectAnswer && (
                           <div className="w-5 h-5" /> // Spacer
                         )}
-                        <span className={`flex-1 ${isUserAnswer || isCorrectAnswer ? 'font-medium' : ''}`}>
+                        <span className={`flex-1 ${isUserAnswer || isCorrectAnswer ? 'font-bold' : ''}`}>
                           {option}
                         </span>
                       </div>
@@ -209,15 +209,15 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
   return (
     <div className="max-w-4xl mx-auto p-4 min-h-[60vh] flex flex-col justify-center mb-8">
       <div className="mb-12">
-        <div className="flex justify-between items-center text-sm font-medium text-warm-brown/60 mb-4">
-          <span className="bg-warm-brown/5 px-4 py-1.5 rounded-full">
+        <div className="flex justify-between items-center text-sm font-bold text-neo-charcoal mb-4">
+          <span className="bg-neo-yellow/30 px-4 py-1.5 rounded-full border-2 border-neo-border">
             Question {currentIndex + 1} / {totalQuestions}
           </span>
-          <span>{Math.round(((currentIndex + 1) / totalQuestions) * 100)}% completed</span>
+          <span className="text-neo-gray">{Math.round(((currentIndex + 1) / totalQuestions) * 100)}% completed</span>
         </div>
-        <div className="w-full h-2 bg-warm-gray/30 rounded-full overflow-hidden">
+        <div className="w-full h-3 bg-neo-cream rounded-full border-2 border-neo-border overflow-hidden">
           <div
-            className="h-full bg-warm-orange rounded-full transition-all duration-500 ease-out"
+            className="h-full bg-neo-green rounded-full transition-all duration-500 ease-out"
             style={{ width: `${((currentIndex + 1) / totalQuestions) * 100}%` }}
           />
         </div>
@@ -232,7 +232,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
           transition={{ duration: 0.4, ease: "easeOut" }}
           className="w-full"
         >
-          <h3 className="text-3xl md:text-4xl font-bold text-warm-brown text-center mb-16 leading-tight">
+          <h3 className="text-3xl md:text-4xl font-heading font-extrabold text-neo-charcoal text-center mb-16 leading-tight">
             {currentCard.front}
           </h3>
 
@@ -240,7 +240,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
             <div className="flex flex-col gap-4">
               {[1, 2, 3, 4].map((index) => (
                 <div key={index} className="animate-pulse">
-                  <div className="w-full h-[88px] rounded-2xl bg-warm-gray/50" />
+                  <div className="w-full h-[88px] rounded-neo-lg bg-neo-cream border-2 border-neo-border/30" />
                 </div>
               ))}
             </div>
@@ -255,17 +255,17 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
                 const isSelected = selectedAnswer === option;
                 const isCorrect = option === currentCard.back;
 
-                let buttonClass = 'w-full text-left p-6 rounded-2xl border-2 transition-all duration-200 group relative overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-1';
+                let buttonClass = 'w-full text-left p-6 rounded-neo-lg border-2 transition-all duration-200 group relative overflow-hidden';
                 if (!selectedAnswer) {
-                  buttonClass += ' hover:border-warm-orange hover:bg-warm-cream/30 border-warm-gray bg-white text-warm-brown';
+                  buttonClass += ' hover:border-neo-green hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] border-neo-border bg-white text-neo-charcoal shadow-neo';
                 } else if (isSelected) {
                   buttonClass += isCorrect
-                    ? ' border-warm-olive bg-warm-olive/10 text-warm-brown'
-                    : ' border-red-200 bg-red-50 text-red-800';
+                    ? ' border-neo-green bg-neo-green/10 text-neo-charcoal shadow-neo'
+                    : ' border-red-300 bg-neo-pink/20 text-red-800 shadow-neo';
                 } else if (isCorrect) {
-                  buttonClass += ' border-warm-olive bg-warm-olive/10 text-warm-brown';
+                  buttonClass += ' border-neo-green bg-neo-green/10 text-neo-charcoal shadow-neo';
                 } else {
-                  buttonClass += ' border-warm-gray opacity-40 bg-gray-50';
+                  buttonClass += ' border-neo-border/30 opacity-40 bg-gray-50';
                 }
 
                 return (
@@ -277,8 +277,8 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
                   >
                     <div className="flex items-center gap-4 relative z-10">
                       <div className={`w-8 h-8 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors ${selectedAnswer && (isSelected || isCorrect)
-                        ? isCorrect ? 'border-warm-olive bg-warm-olive text-white' : 'border-red-500 bg-red-500 text-white'
-                        : 'border-warm-gray group-hover:border-warm-orange text-warm-brown/40 group-hover:text-warm-orange'
+                        ? isCorrect ? 'border-neo-green bg-neo-green text-white' : 'border-red-500 bg-red-500 text-white'
+                        : 'border-neo-border group-hover:border-neo-green text-neo-gray group-hover:text-neo-green'
                         }`}>
                         {selectedAnswer && (isSelected || isCorrect) ? (
                           isCorrect ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />
@@ -286,7 +286,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
                           <span className="text-sm font-bold">{String.fromCharCode(65 + index)}</span>
                         )}
                       </div>
-                      <span className="text-lg font-medium leading-snug">{option}</span>
+                      <span className="text-lg font-bold leading-snug">{option}</span>
                     </div>
                   </button>
                 );

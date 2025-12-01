@@ -9,15 +9,16 @@ interface AvatarProps {
 export function Avatar({ name, imageUrl, size = 'md' }: AvatarProps) {
   const initials = name.charAt(0).toUpperCase();
 
+  // Neo-Brutalism color palette
+  const colors = ['#BBE6F0', '#22C55E', '#FF9F9F', '#FCD34D', '#A5D6E8'];
+
   const backgroundColor = useMemo(() => {
     // Generate consistent color based on name
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
       hash = name.charCodeAt(i) + ((hash << 5) - hash);
     }
-
-    const hue = hash % 360;
-    return `hsl(${hue}, 70%, 50%)`;
+    return colors[Math.abs(hash) % colors.length];
   }, [name]);
 
   const sizeClasses = {
@@ -33,14 +34,14 @@ export function Avatar({ name, imageUrl, size = 'md' }: AvatarProps) {
       <img
         src={imageUrl}
         alt={name}
-        className={`${sizeClasses[size]} rounded-full object-cover ring-2 ring-white ring-offset-2 ring-offset-indigo-50`}
+        className={`${sizeClasses[size]} rounded-full object-cover border-2 border-dark`}
       />
     );
   }
 
   return (
     <div
-      className={`${sizeClasses[size]} rounded-full flex items-center justify-center text-white font-medium`}
+      className={`${sizeClasses[size]} rounded-full flex items-center justify-center text-dark font-bold border-2 border-dark`}
       style={{ backgroundColor }}
     >
       {initials}

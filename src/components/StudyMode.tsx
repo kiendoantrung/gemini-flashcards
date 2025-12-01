@@ -17,14 +17,16 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
   if (!deck.cards || deck.cards.length === 0) {
     return (
       <div className="max-w-4xl mx-auto text-center py-12">
-        <p className="text-warm-brown text-lg mb-4">This deck has no flashcards.</p>
-        <button
-          onClick={onExit}
-          className="text-warm-orange hover:text-warm-brown flex items-center gap-2 mx-auto"
-        >
-          <RotateCcw className="w-4 h-4" />
-          Back to Decks
-        </button>
+        <div className="bg-white rounded-neo-xl border-2 border-neo-border shadow-neo p-8">
+          <p className="text-neo-charcoal text-lg font-medium mb-4">This deck has no flashcards.</p>
+          <button
+            onClick={onExit}
+            className="text-neo-green hover:text-neo-charcoal flex items-center gap-2 mx-auto font-bold transition-colors"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Back to Decks
+          </button>
+        </div>
       </div>
     );
   }
@@ -35,14 +37,16 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
   if (!currentCard) {
     return (
       <div className="max-w-4xl mx-auto text-center py-12">
-        <p className="text-warm-brown text-lg mb-4">Card not found.</p>
-        <button
-          onClick={onExit}
-          className="text-warm-orange hover:text-warm-brown flex items-center gap-2 mx-auto"
-        >
-          <RotateCcw className="w-4 h-4" />
-          Back to Decks
-        </button>
+        <div className="bg-white rounded-neo-xl border-2 border-neo-border shadow-neo p-8">
+          <p className="text-neo-charcoal text-lg font-medium mb-4">Card not found.</p>
+          <button
+            onClick={onExit}
+            className="text-neo-green hover:text-neo-charcoal flex items-center gap-2 mx-auto font-bold transition-colors"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Back to Decks
+          </button>
+        </div>
       </div>
     );
   }
@@ -67,28 +71,36 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
       <div className="mb-6 flex items-center justify-between">
         <button
           onClick={onExit}
-          className="text-gray-600 hover:text-gray-800 flex items-center gap-2"
+          className="text-neo-gray hover:text-neo-charcoal flex items-center gap-2 font-bold transition-colors"
         >
           <RotateCcw className="w-4 h-4" />
           Back to Decks
         </button>
-        <h2 className="text-xl font-semibold text-warm-brown">{deck.title}</h2>
-        <div className="text-sm text-gray-500">
+        <h2 className="text-xl font-heading font-bold text-neo-charcoal">{deck.title}</h2>
+        <div className="px-3 py-1.5 bg-neo-yellow/30 rounded-full border-2 border-neo-border text-sm font-bold text-neo-charcoal">
           {currentIndex + 1} / {deck.cards.length}
         </div>
       </div>
 
-      <div className="mb-6">
+      {/* Progress Bar */}
+      <div className="mb-6 h-3 bg-neo-cream rounded-full border-2 border-neo-border overflow-hidden">
+        <div 
+          className="h-full bg-neo-green transition-all duration-300 rounded-full"
+          style={{ width: `${((currentIndex + 1) / deck.cards.length) * 100}%` }}
+        />
+      </div>
+
+      <div className="mb-8">
         <FlashCard card={currentCard} />
       </div>
 
-      <div className="flex justify-center gap-4">
+      <div className="flex justify-center gap-4 flex-wrap">
         <button
           onClick={handlePrevious}
           disabled={isFirst}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg ${isFirst
+          className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold border-2 border-neo-border transition-all ${isFirst
             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            : 'bg-white text-warm-brown hover:bg-warm-cream border border-warm-gray'
+            : 'bg-white text-neo-charcoal shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px]'
             }`}
         >
           <ArrowLeft className="w-4 h-4" />
@@ -97,9 +109,9 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
         <button
           onClick={handleNext}
           disabled={isLast}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg ${isLast
+          className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold border-2 border-neo-border transition-all ${isLast
             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            : 'bg-warm-orange text-white hover:bg-warm-brown'
+            : 'bg-neo-green text-white shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px]'
             }`}
         >
           Next
@@ -108,7 +120,7 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
         {isLast && (
           <button
             onClick={() => setShowQuiz(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-warm-olive text-white hover:bg-warm-brown"
+            className="flex items-center gap-2 px-6 py-3 rounded-full font-bold border-2 border-neo-border bg-neo-accent-blue text-neo-charcoal shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all"
           >
             <CheckCircle className="w-4 h-4" />
             Take Quiz

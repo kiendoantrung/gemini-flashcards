@@ -184,56 +184,58 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-warm-cream flex flex-col">
-      <header className="bg-warm-cream/90 backdrop-blur-sm shadow-sm sticky top-0 z-50 border-b border-warm-gray">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+    <div className="min-h-screen bg-neo-cream flex flex-col">
+      <header className="bg-neo-cream border-b-2 border-neo-border sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <GraduationCap className="w-8 h-8 text-warm-brown" />
-              <h1 className="text-2xl font-bold text-warm-brown">
+              <div className="w-10 h-10 bg-neo-green rounded-neo-md border-2 border-neo-border shadow-neo flex items-center justify-center">
+                <GraduationCap className="w-6 h-6 text-white" />
+              </div>
+              <h1 className="text-xl font-heading font-bold text-neo-charcoal">
                 Gemini Flashcards
               </h1>
             </div>
             <div className="flex items-center gap-4 relative dropdown-container">
               <button
                 onClick={() => setShowDropdown(!showDropdown)}
-                className="flex items-center gap-2 px-3 py-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
+                className="flex items-center gap-2 px-3 py-2 rounded-full border-2 border-neo-border bg-white shadow-neo hover:shadow-neo-hover transition-all"
               >
                 <Avatar
                   name={user?.user_metadata?.name || user?.email || 'User'}
                   imageUrl={user?.user_metadata?.avatar_url}
                   size="sm"
                 />
-                <span className="hidden md:inline text-warm-brown font-medium">
+                <span className="hidden md:inline text-neo-charcoal font-bold">
                   {user?.user_metadata?.name || user?.email}
                 </span>
                 <ChevronDown
-                  className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${showDropdown ? 'transform rotate-180' : ''
+                  className={`w-4 h-4 text-neo-gray transition-transform duration-200 ${showDropdown ? 'transform rotate-180' : ''
                     }`}
                 />
               </button>
 
               {showDropdown && (
-                <div className="absolute right-0 top-full mt-2 w-56 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 transform opacity-100 scale-100 transition-all duration-200 ease-out origin-top-right border border-warm-gray">
-                  <div className="py-1" role="menu">
+                <div className="absolute right-0 top-full mt-2 w-56 rounded-neo-lg bg-white border-2 border-neo-border shadow-neo-lg transform opacity-100 scale-100 transition-all duration-200 ease-out origin-top-right">
+                  <div className="py-2" role="menu">
                     <button
                       onClick={() => {
                         setShowProfileEditor(true);
                         setShowDropdown(false);
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-warm-brown hover:bg-warm-cream transition-colors duration-150"
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-neo-charcoal hover:bg-neo-green/10 transition-colors duration-150 font-medium"
                       role="menuitem"
                     >
-                      <UserCircle className="w-4 h-4 text-warm-orange" />
+                      <UserCircle className="w-4 h-4 text-neo-green" />
                       <span>Edit Profile</span>
                     </button>
-                    <div className="h-px bg-warm-gray mx-3"></div>
+                    <div className="h-px bg-neo-border/20 mx-3"></div>
                     <button
                       onClick={() => {
                         handleLogout();
                         setShowDropdown(false);
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors duration-150"
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors duration-150 font-medium"
                       role="menuitem"
                     >
                       <LogOut className="w-4 h-4 text-red-500" />
@@ -273,10 +275,13 @@ function App() {
         ) : (
           <>
             <div className="mb-12 text-center">
-              <h2 className="text-3xl md:text-4xl font-bold text-warm-brown mb-4">
+              <span className="inline-block px-4 py-2 bg-neo-green text-white font-bold text-sm rounded-full border-2 border-neo-border shadow-neo mb-4">
+                Your Dashboard
+              </span>
+              <h2 className="text-3xl md:text-4xl font-heading font-extrabold text-neo-charcoal mb-4">
                 Your Learning Journey
               </h2>
-              <p className="text-warm-brown/60 text-lg max-w-2xl mx-auto">
+              <p className="text-neo-gray text-lg max-w-2xl mx-auto">
                 Manage your flashcard decks and track your progress.
               </p>
             </div>
