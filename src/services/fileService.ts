@@ -1,17 +1,6 @@
-import { GoogleGenAI } from "@google/genai";
-import { z } from "zod";
+import { supabase } from "../lib/supabase";
 import type { Flashcard } from "../types/flashcard";
 import { read, utils } from "xlsx";
-
-const genAI = new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_AI_KEY });
-
-// Zod Schema for Structured Output
-const flashcardSchema = z.object({
-  front: z.string().describe("The question or front side of the flashcard"),
-  back: z.string().describe("The answer or back side of the flashcard"),
-});
-
-const flashcardsArraySchema = z.array(flashcardSchema).describe("Array of flashcards");
 
 // Retry configuration
 const RETRY_CONFIG = {
@@ -74,9 +63,7 @@ async function withRetry<T>(
 }
 
 export async function extractTextFromFile(file: File): Promise<string> {
-  // PDF files will be handled directly by Gemini in generateQAFromFile
   if (file.type === "application/pdf") {
-    // Return empty string - PDF will be sent directly to Gemini
     return "";
   }
 
@@ -160,77 +147,27 @@ export async function generateQAFromText(
   text: string,
   numQuestions: number = 10
 ): Promise<Array<Omit<Flashcard, "id">>> {
-  const prompt = `Create ${numQuestions} flashcard questions and answers from this text.
-
-RULES:
-- Respond in the SAME LANGUAGE as the source text
-- Focus on KEY CONCEPTS and important facts
-- Questions should test understanding, not trivial details
-- Answers should be concise but complete (1-3 sentences)
-- Avoid duplicate or overlapping questions
-- Return a JSON array of objects, each with "front" (question) and "back" (answer) properties
-
-Source text:
-${text}`;
-
-  // Use plain JSON schema format for better compatibility
-  const responseSchema = {
-    type: "array",
-    items: {
-      type: "object",
-      properties: {
-        front: { type: "string", description: "The question or front side of the flashcard" },
-        back: { type: "string", description: "The answer or back side of the flashcard" }
-      },
-      required: ["front", "back"]
-    },
-    description: "Array of flashcards"
-  };
-
   try {
-    const result = await withRetry(
-      () => genAI.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: responseSchema as Record<string, unknown>,
+    const { data, error } = await withRetry(
+      () => supabase.functions.invoke("generate-flashcards", {
+        body: {
+          action: "generateFromText",
+          text,
+          numQuestions,
         },
       }),
       'generateQAFromText'
     );
 
-    const responseText = result.text;
-    if (!responseText) {
-      throw new Error("Empty response from AI model");
+    if (error) {
+      throw new Error(`Edge function error: ${error.message}`);
     }
 
-    let parsedData = JSON.parse(responseText);
-    
-    // Handle object response with cards/flashcards property
-    if (!Array.isArray(parsedData)) {
-      if (parsedData.cards && Array.isArray(parsedData.cards)) {
-        parsedData = parsedData.cards;
-      } else if (parsedData.flashcards && Array.isArray(parsedData.flashcards)) {
-        parsedData = parsedData.flashcards;
-      } else {
-        throw new Error("Invalid response format: expected array of flashcards");
-      }
+    if (data.error) {
+      throw new Error(data.error);
     }
 
-    // Normalize field names: support both front/back and question/answer formats
-    const normalizedCards = parsedData.map((card: Record<string, unknown>) => ({
-      front: card.front || card.question || card.q || "",
-      back: card.back || card.answer || card.a || ""
-    }));
-
-    const cards = flashcardsArraySchema.parse(normalizedCards);
-
-    return cards.filter(
-      (card) =>
-        card && typeof card.front === "string" && card.front.length > 0 && 
-        typeof card.back === "string" && card.back.length > 0
-    );
+    return data as Array<Omit<Flashcard, "id">>;
   } catch (error: unknown) {
     throw new Error(
       `Failed to generate questions from content: ${(error as Error).message}`
@@ -249,88 +186,34 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
-// Generate flashcards directly from PDF using Gemini's native PDF support
+// Generate flashcards directly from PDF using Edge Function
 export async function generateQAFromPDF(
   file: File,
   numQuestions: number = 10
 ): Promise<Array<Omit<Flashcard, "id">>> {
   const base64Data = await fileToBase64(file);
 
-  const prompt = `Create ${numQuestions} flashcard questions and answers from this PDF document.
-
-RULES:
-- Respond in the SAME LANGUAGE as the source document
-- Focus on KEY CONCEPTS and important facts
-- Questions should test understanding, not trivial details
-- Answers should be concise but complete (1-3 sentences)
-- Avoid duplicate or overlapping questions
-- Return a JSON array of objects, each with "front" (question) and "back" (answer) properties`;
-
-  const responseSchema = {
-    type: "array",
-    items: {
-      type: "object",
-      properties: {
-        front: { type: "string", description: "The question or front side of the flashcard" },
-        back: { type: "string", description: "The answer or back side of the flashcard" }
-      },
-      required: ["front", "back"]
-    },
-    description: "Array of flashcards"
-  };
-
   try {
-    const result = await withRetry(
-      () => genAI.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [
-          { text: prompt },
-          {
-            inlineData: {
-              mimeType: "application/pdf",
-              data: base64Data
-            }
-          }
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: responseSchema as Record<string, unknown>,
+    const { data, error } = await withRetry(
+      () => supabase.functions.invoke("generate-flashcards", {
+        body: {
+          action: "generateFromPDF",
+          pdfBase64: base64Data,
+          numQuestions,
         },
       }),
       'generateQAFromPDF'
     );
 
-    const responseText = result.text;
-    if (!responseText) {
-      throw new Error("Empty response from AI model");
+    if (error) {
+      throw new Error(`Edge function error: ${error.message}`);
     }
 
-    let parsedData = JSON.parse(responseText);
-    
-    // Handle object response with cards/flashcards property
-    if (!Array.isArray(parsedData)) {
-      if (parsedData.cards && Array.isArray(parsedData.cards)) {
-        parsedData = parsedData.cards;
-      } else if (parsedData.flashcards && Array.isArray(parsedData.flashcards)) {
-        parsedData = parsedData.flashcards;
-      } else {
-        throw new Error("Invalid response format: expected array of flashcards");
-      }
+    if (data.error) {
+      throw new Error(data.error);
     }
 
-    // Normalize field names: support both front/back and question/answer formats
-    const normalizedCards = parsedData.map((card: Record<string, unknown>) => ({
-      front: card.front || card.question || card.q || "",
-      back: card.back || card.answer || card.a || ""
-    }));
-
-    const cards = flashcardsArraySchema.parse(normalizedCards);
-
-    return cards.filter(
-      (card) =>
-        card && typeof card.front === "string" && card.front.length > 0 && 
-        typeof card.back === "string" && card.back.length > 0
-    );
+    return data as Array<Omit<Flashcard, "id">>;
   } catch (error: unknown) {
     throw new Error(
       `Failed to generate questions from PDF: ${(error as Error).message}`
