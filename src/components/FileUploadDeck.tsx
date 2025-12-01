@@ -30,18 +30,30 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
           description: `AI-generated from ${file.name}`,
           cards: cards.map(card => ({ ...card, id: crypto.randomUUID() }))
         };
+        
+        if (deck.cards.length === 0) {
+          throw new Error('No flashcards were generated from the file');
+        }
+        
         onDeckCreated(deck);
       } else {
         // Parse the Q&A formatted text into cards
         const cards = text.split('\n\n')
           .map(pair => {
-            const [question, answer] = pair.split('\n');
+            const lines = pair.split('\n');
+            const question = lines[0] || '';
+            const answer = lines[1] || '';
             return {
               id: crypto.randomUUID(),
-              front: question.replace('Q: ', ''),
-              back: answer.replace('A: ', '')
+              front: question.replace('Q: ', '').trim(),
+              back: answer.replace('A: ', '').trim()
             };
-          });
+          })
+          .filter(card => card.front && card.back); // Filter out empty cards
+
+        if (cards.length === 0) {
+          throw new Error('No valid question-answer pairs found in the file');
+        }
 
         const deck: Deck = {
           id: crypto.randomUUID(),

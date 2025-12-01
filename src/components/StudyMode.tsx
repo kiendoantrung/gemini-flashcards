@@ -13,7 +13,40 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showQuiz, setShowQuiz] = useState(false);
 
+  // Safety check: ensure deck has cards
+  if (!deck.cards || deck.cards.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-12">
+        <p className="text-warm-brown text-lg mb-4">This deck has no flashcards.</p>
+        <button
+          onClick={onExit}
+          className="text-warm-orange hover:text-warm-brown flex items-center gap-2 mx-auto"
+        >
+          <RotateCcw className="w-4 h-4" />
+          Back to Decks
+        </button>
+      </div>
+    );
+  }
+
   const currentCard = deck.cards[currentIndex];
+  
+  // Safety check: ensure currentCard exists
+  if (!currentCard) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-12">
+        <p className="text-warm-brown text-lg mb-4">Card not found.</p>
+        <button
+          onClick={onExit}
+          className="text-warm-orange hover:text-warm-brown flex items-center gap-2 mx-auto"
+        >
+          <RotateCcw className="w-4 h-4" />
+          Back to Decks
+        </button>
+      </div>
+    );
+  }
+
   const isFirst = currentIndex === 0;
   const isLast = currentIndex === deck.cards.length - 1;
 

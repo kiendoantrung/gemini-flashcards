@@ -1,6 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import type { Deck, Flashcard } from "../types/flashcard";
 
 const API_KEY = import.meta.env.VITE_GOOGLE_AI_KEY;
@@ -97,7 +96,30 @@ export async function generateDeck(
 RULES:
 - Respond in the SAME LANGUAGE as the topic
 - Questions should test understanding, not just recall
-- Answers should be concise but complete (1-3 sentences)`;
+- Answers should be concise but complete (1-3 sentences)
+- Return a JSON object with: title (string), description (string), and cards (array of objects with front and back properties)`;
+
+  // Create a clean JSON schema that Gemini understands
+  const responseSchema = {
+    type: "object",
+    properties: {
+      title: { type: "string", description: "Title of the flashcard deck" },
+      description: { type: "string", description: "Brief description of the topic" },
+      cards: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            front: { type: "string", description: "The question or front side of the flashcard" },
+            back: { type: "string", description: "The answer or back side of the flashcard" }
+          },
+          required: ["front", "back"]
+        },
+        description: "Array of flashcards"
+      }
+    },
+    required: ["title", "description", "cards"]
+  };
 
   const result = await withRetry(
     () => genAI.models.generateContent({
@@ -105,8 +127,7 @@ RULES:
       contents: prompt,
       config: {
         responseMimeType: "application/json",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        responseSchema: zodToJsonSchema(deckSchema as any) as Record<string, unknown>,
+        responseSchema: responseSchema as Record<string, unknown>,
       },
     }),
     'generateDeck'
@@ -117,7 +138,24 @@ RULES:
     throw new Error("Empty response from AI model");
   }
 
-  const data = deckSchema.parse(JSON.parse(text));
+  // Parse the response and handle potential array format
+  let parsedData = JSON.parse(text);
+  
+  // If the response is an array, try to extract or construct the deck
+  if (Array.isArray(parsedData)) {
+    // Check if it's an array of flashcards
+    if (parsedData.length > 0 && parsedData[0].front && parsedData[0].back) {
+      parsedData = {
+        title: topic,
+        description: `Flashcards about ${topic}`,
+        cards: parsedData
+      };
+    } else {
+      throw new Error("Invalid response format from AI model");
+    }
+  }
+
+  const data = deckSchema.parse(parsedData);
 
   if (data.cards.length === 0) {
     throw new Error("No flashcards generated");
@@ -145,16 +183,33 @@ RULES:
 - Distractors must be in the SAME LANGUAGE as the correct answer
 - Distractors should be similar in length and style to the correct answer
 - Distractors should be believable but clearly wrong
+- Return a JSON object where each key is the card ID and the value is an array of 3 distractor strings
 
 Cards:
 ${JSON.stringify(cardsList, null, 2)}`;
 
-  // Create dynamic schema based on card IDs
-  const dynamicSchema = z.object(
+  // Create dynamic schema based on card IDs - use plain JSON schema format
+  const dynamicSchemaProperties: Record<string, unknown> = {};
+  cards.forEach(card => {
+    dynamicSchemaProperties[card.id] = {
+      type: "array",
+      items: { type: "string" },
+      description: `3 distractors for card: ${card.front}`
+    };
+  });
+
+  const responseSchema = {
+    type: "object",
+    properties: dynamicSchemaProperties,
+    required: cards.map(c => c.id)
+  };
+
+  // Also create a Zod schema for validation
+  const zodDynamicSchema = z.object(
     Object.fromEntries(
       cards.map(card => [
         card.id,
-        z.array(z.string()).length(3).describe(`3 distractors for card: ${card.front}`)
+        z.array(z.string()).describe(`3 distractors for card: ${card.front}`)
       ])
     )
   );
@@ -165,8 +220,7 @@ ${JSON.stringify(cardsList, null, 2)}`;
       contents: prompt,
       config: {
         responseMimeType: "application/json",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        responseSchema: zodToJsonSchema(dynamicSchema as any) as Record<string, unknown>,
+        responseSchema: responseSchema as Record<string, unknown>,
       },
     }),
     'generateBatchDistractors'
@@ -177,7 +231,19 @@ ${JSON.stringify(cardsList, null, 2)}`;
     throw new Error("Empty response from AI model");
   }
 
-  return dynamicSchema.parse(JSON.parse(text));
+  const parsedData = JSON.parse(text);
+  
+  // Handle array response by converting to object if needed
+  if (Array.isArray(parsedData)) {
+    // Create a fallback object mapping card IDs to empty arrays
+    const fallback: Record<string, string[]> = {};
+    cards.forEach(card => {
+      fallback[card.id] = [];
+    });
+    return fallback;
+  }
+
+  return zodDynamicSchema.parse(parsedData);
 }
 
 export async function generateBatchDistractors(

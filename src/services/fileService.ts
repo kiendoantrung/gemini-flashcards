@@ -1,6 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 import type { Flashcard } from "../types/flashcard";
 import { read, utils } from "xlsx";
@@ -189,9 +188,24 @@ RULES:
 - Questions should test understanding, not trivial details
 - Answers should be concise but complete (1-3 sentences)
 - Avoid duplicate or overlapping questions
+- Return a JSON array of objects, each with "front" (question) and "back" (answer) properties
 
 Source text:
 ${text}`;
+
+  // Use plain JSON schema format for better compatibility
+  const responseSchema = {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        front: { type: "string", description: "The question or front side of the flashcard" },
+        back: { type: "string", description: "The answer or back side of the flashcard" }
+      },
+      required: ["front", "back"]
+    },
+    description: "Array of flashcards"
+  };
 
   try {
     const result = await withRetry(
@@ -200,8 +214,7 @@ ${text}`;
         contents: prompt,
         config: {
           responseMimeType: "application/json",
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          responseSchema: zodToJsonSchema(flashcardsArraySchema as any) as Record<string, unknown>,
+          responseSchema: responseSchema as Record<string, unknown>,
         },
       }),
       'generateQAFromText'
@@ -212,11 +225,31 @@ ${text}`;
       throw new Error("Empty response from AI model");
     }
 
-    const cards = flashcardsArraySchema.parse(JSON.parse(responseText));
+    let parsedData = JSON.parse(responseText);
+    
+    // Handle object response with cards/flashcards property
+    if (!Array.isArray(parsedData)) {
+      if (parsedData.cards && Array.isArray(parsedData.cards)) {
+        parsedData = parsedData.cards;
+      } else if (parsedData.flashcards && Array.isArray(parsedData.flashcards)) {
+        parsedData = parsedData.flashcards;
+      } else {
+        throw new Error("Invalid response format: expected array of flashcards");
+      }
+    }
+
+    // Normalize field names: support both front/back and question/answer formats
+    const normalizedCards = parsedData.map((card: Record<string, unknown>) => ({
+      front: card.front || card.question || card.q || "",
+      back: card.back || card.answer || card.a || ""
+    }));
+
+    const cards = flashcardsArraySchema.parse(normalizedCards);
 
     return cards.filter(
       (card) =>
-        card && typeof card.front === "string" && typeof card.back === "string"
+        card && typeof card.front === "string" && card.front.length > 0 && 
+        typeof card.back === "string" && card.back.length > 0
     );
   } catch (error: unknown) {
     throw new Error(
