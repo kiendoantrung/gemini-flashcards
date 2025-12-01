@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { extractTextFromFile, generateQAFromText } from '../services/fileService';
+import { extractTextFromFile, generateQAFromText, generateQAFromPDF } from '../services/fileService';
 import type { Deck } from '../types/flashcard';
 import { FileText, Upload, FileSpreadsheet, Loader2, AlertCircle } from 'lucide-react';
 
@@ -20,10 +20,17 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
     setError(null);
 
     try {
-      const text = await extractTextFromFile(file);
-
       if (type === 'text') {
-        const cards = await generateQAFromText(text, numQuestions);
+        let cards;
+        
+        // Use Gemini's native PDF support for PDF files
+        if (file.type === 'application/pdf') {
+          cards = await generateQAFromPDF(file, numQuestions);
+        } else {
+          const text = await extractTextFromFile(file);
+          cards = await generateQAFromText(text, numQuestions);
+        }
+        
         const deck: Deck = {
           id: crypto.randomUUID(),
           title: file.name.split('.')[0],
@@ -38,6 +45,7 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
         onDeckCreated(deck);
       } else {
         // Parse the Q&A formatted text into cards
+        const text = await extractTextFromFile(file);
         const cards = text.split('\n\n')
           .map(pair => {
             const lines = pair.split('\n');

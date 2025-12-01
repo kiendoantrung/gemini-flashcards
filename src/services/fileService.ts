@@ -1,14 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 import type { Flashcard } from "../types/flashcard";
 import { read, utils } from "xlsx";
 
 const genAI = new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_AI_KEY });
-
-// Set the workerSrc to a CDN version of the worker script
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
 // Zod Schema for Structured Output
 const flashcardSchema = z.object({
@@ -79,25 +74,10 @@ async function withRetry<T>(
 }
 
 export async function extractTextFromFile(file: File): Promise<string> {
+  // PDF files will be handled directly by Gemini in generateQAFromFile
   if (file.type === "application/pdf") {
-    const arrayBuffer = await file.arrayBuffer();
-
-    // Load the PDF document
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let text = "";
-
-    // Extract text from each page
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-
-      // Accumulate text from each item on the page
-      const pageText = textContent.items
-        .map((item) => (item as any).str)
-        .join(" ");
-      text += pageText + "\n";
-    }
-    return text;
+    // Return empty string - PDF will be sent directly to Gemini
+    return "";
   }
 
   if (
@@ -254,6 +234,106 @@ ${text}`;
   } catch (error: unknown) {
     throw new Error(
       `Failed to generate questions from content: ${(error as Error).message}`
+    );
+  }
+}
+
+// Helper function to convert File to base64
+async function fileToBase64(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const uint8Array = new Uint8Array(arrayBuffer);
+  let binary = '';
+  for (let i = 0; i < uint8Array.length; i++) {
+    binary += String.fromCharCode(uint8Array[i]);
+  }
+  return btoa(binary);
+}
+
+// Generate flashcards directly from PDF using Gemini's native PDF support
+export async function generateQAFromPDF(
+  file: File,
+  numQuestions: number = 10
+): Promise<Array<Omit<Flashcard, "id">>> {
+  const base64Data = await fileToBase64(file);
+
+  const prompt = `Create ${numQuestions} flashcard questions and answers from this PDF document.
+
+RULES:
+- Respond in the SAME LANGUAGE as the source document
+- Focus on KEY CONCEPTS and important facts
+- Questions should test understanding, not trivial details
+- Answers should be concise but complete (1-3 sentences)
+- Avoid duplicate or overlapping questions
+- Return a JSON array of objects, each with "front" (question) and "back" (answer) properties`;
+
+  const responseSchema = {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        front: { type: "string", description: "The question or front side of the flashcard" },
+        back: { type: "string", description: "The answer or back side of the flashcard" }
+      },
+      required: ["front", "back"]
+    },
+    description: "Array of flashcards"
+  };
+
+  try {
+    const result = await withRetry(
+      () => genAI.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType: "application/pdf",
+              data: base64Data
+            }
+          }
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: responseSchema as Record<string, unknown>,
+        },
+      }),
+      'generateQAFromPDF'
+    );
+
+    const responseText = result.text;
+    if (!responseText) {
+      throw new Error("Empty response from AI model");
+    }
+
+    let parsedData = JSON.parse(responseText);
+    
+    // Handle object response with cards/flashcards property
+    if (!Array.isArray(parsedData)) {
+      if (parsedData.cards && Array.isArray(parsedData.cards)) {
+        parsedData = parsedData.cards;
+      } else if (parsedData.flashcards && Array.isArray(parsedData.flashcards)) {
+        parsedData = parsedData.flashcards;
+      } else {
+        throw new Error("Invalid response format: expected array of flashcards");
+      }
+    }
+
+    // Normalize field names: support both front/back and question/answer formats
+    const normalizedCards = parsedData.map((card: Record<string, unknown>) => ({
+      front: card.front || card.question || card.q || "",
+      back: card.back || card.answer || card.a || ""
+    }));
+
+    const cards = flashcardsArraySchema.parse(normalizedCards);
+
+    return cards.filter(
+      (card) =>
+        card && typeof card.front === "string" && card.front.length > 0 && 
+        typeof card.back === "string" && card.back.length > 0
+    );
+  } catch (error: unknown) {
+    throw new Error(
+      `Failed to generate questions from PDF: ${(error as Error).message}`
     );
   }
 }
