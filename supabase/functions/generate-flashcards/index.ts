@@ -16,6 +16,74 @@ const DEFAULT_NUM_QUESTIONS = 10;
 const MAX_NUM_QUESTIONS = 50;
 const MIN_NUM_QUESTIONS = 1;
 
+// Retry configuration
+const MAX_RETRIES = 3;
+const INITIAL_DELAY_MS = 1000;
+const MAX_DELAY_MS = 10000;
+
+// ============================================================================
+// API Key Management
+// ============================================================================
+
+/**
+ * Get all available API keys from environment variables
+ * Supports: GOOGLE_AI_KEY, GOOGLE_AI_KEY_2, GOOGLE_AI_KEY_3, etc.
+ */
+function getApiKeys(): string[] {
+  const keys: string[] = [];
+  
+  // Primary key
+  const primaryKey = Deno.env.get("GOOGLE_AI_KEY");
+  if (primaryKey) keys.push(primaryKey);
+  
+  // Additional keys (up to 10)
+  for (let i = 2; i <= 10; i++) {
+    const key = Deno.env.get(`GOOGLE_AI_KEY_${i}`);
+    if (key) keys.push(key);
+  }
+  
+  return keys;
+}
+
+// Track failed keys to avoid using them again in the same request
+let failedKeyIndices: Set<number> = new Set();
+let currentKeyIndex = 0;
+
+/**
+ * Get the next available API key (round-robin with failover)
+ */
+function getNextApiKey(keys: string[]): { key: string; index: number } | null {
+  const availableKeys = keys.filter((_, idx) => !failedKeyIndices.has(idx));
+  
+  if (availableKeys.length === 0) {
+    return null;
+  }
+  
+  // Round-robin selection among available keys
+  currentKeyIndex = (currentKeyIndex + 1) % keys.length;
+  
+  // Skip failed keys
+  while (failedKeyIndices.has(currentKeyIndex)) {
+    currentKeyIndex = (currentKeyIndex + 1) % keys.length;
+  }
+  
+  return { key: keys[currentKeyIndex], index: currentKeyIndex };
+}
+
+/**
+ * Mark a key as failed for this request cycle
+ */
+function markKeyAsFailed(index: number): void {
+  failedKeyIndices.add(index);
+}
+
+/**
+ * Reset failed keys at the start of a new request
+ */
+function resetFailedKeys(): void {
+  failedKeyIndices = new Set();
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -146,10 +214,37 @@ function normalizeFlashcards(data: unknown): FlashcardData[] {
 }
 
 /**
- * Generates content using Gemini AI
+ * Checks if an error is retryable (503, 429, network errors)
+ */
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      message.includes("503") ||
+      message.includes("overloaded") ||
+      message.includes("unavailable") ||
+      message.includes("429") ||
+      message.includes("rate limit") ||
+      message.includes("quota") ||
+      message.includes("timeout") ||
+      message.includes("network")
+    );
+  }
+  return false;
+}
+
+/**
+ * Delay helper for retry logic
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Generates content using Gemini AI with retry logic and key rotation
  */
 async function generateContent(
-  genAI: GoogleGenAI,
+  apiKeys: string[],
   prompt: string,
   schema: Record<string, unknown>,
   inlineData?: { mimeType: string; data: string }
@@ -158,16 +253,81 @@ async function generateContent(
     ? [{ text: prompt }, { inlineData }]
     : prompt;
 
-  const result = await genAI.models.generateContent({
-    model: MODEL_NAME,
-    contents,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: schema,
-    },
-  });
+  let lastError: Error | null = null;
 
-  return result.text || "";
+  // Try each available API key
+  while (true) {
+    const keyInfo = getNextApiKey(apiKeys);
+    
+    if (!keyInfo) {
+      // All keys have failed
+      break;
+    }
+
+    const genAI = new GoogleGenAI({ apiKey: keyInfo.key });
+    
+    // Retry with exponential backoff for this key
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const result = await genAI.models.generateContent({
+          model: MODEL_NAME,
+          contents,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: schema,
+          },
+        });
+
+        return result.text || "";
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // Check if we should try another key
+        const shouldSwitchKey = isRetryableError(error) && 
+          (lastError.message.toLowerCase().includes("quota") ||
+           lastError.message.toLowerCase().includes("rate limit") ||
+           lastError.message.toLowerCase().includes("429"));
+        
+        if (shouldSwitchKey) {
+          console.warn(`API key ${keyInfo.index + 1} hit rate limit, switching to next key...`);
+          markKeyAsFailed(keyInfo.index);
+          break; // Try next key
+        }
+        
+        if (!isRetryableError(error) || attempt === MAX_RETRIES) {
+          // For non-retryable errors or max retries reached, mark key as failed
+          markKeyAsFailed(keyInfo.index);
+          break;
+        }
+
+        // Exponential backoff with jitter
+        const backoffDelay = Math.min(
+          INITIAL_DELAY_MS * Math.pow(2, attempt - 1) + Math.random() * 500,
+          MAX_DELAY_MS
+        );
+        
+        console.warn(
+          `AI request failed (key ${keyInfo.index + 1}, attempt ${attempt}/${MAX_RETRIES}). Retrying in ${Math.round(backoffDelay)}ms...`,
+          lastError.message
+        );
+        
+        await delay(backoffDelay);
+      }
+    }
+  }
+
+  // Provide user-friendly error messages
+  if (lastError) {
+    const message = lastError.message.toLowerCase();
+    if (message.includes("overloaded") || message.includes("503") || message.includes("unavailable")) {
+      throw new Error("AI service is currently busy. Please wait a moment and try again.");
+    }
+    if (message.includes("429") || message.includes("rate limit") || message.includes("quota")) {
+      throw new Error("Too many requests. Please wait a minute and try again.");
+    }
+  }
+
+  throw lastError || new Error("Failed to generate content");
 }
 
 // ============================================================================
@@ -178,7 +338,7 @@ async function generateContent(
  * Generates a flashcard deck from a topic
  */
 async function handleGenerateDeck(
-  genAI: GoogleGenAI,
+  apiKeys: string[],
   topic: string,
   numQuestions: number
 ): Promise<Response> {
@@ -190,7 +350,7 @@ RULES:
 - Answers should be concise but complete (1-3 sentences)
 - Return a JSON object with: title (string), description (string), and cards (array of objects with front and back properties)`;
 
-  const responseText = await generateContent(genAI, prompt, deckSchema as Record<string, unknown>);
+  const responseText = await generateContent(apiKeys, prompt, deckSchema as Record<string, unknown>);
   let parsedData = parseAIResponse<DeckData | FlashcardData[]>(responseText);
 
   // Handle array response format
@@ -231,7 +391,7 @@ RULES:
  * Generates distractors for quiz mode
  */
 async function handleGenerateDistractors(
-  genAI: GoogleGenAI,
+  apiKeys: string[],
   cards: Array<{ id: string; front: string; back: string }>
 ): Promise<Response> {
   const cardsList = cards.map((c) => ({
@@ -267,7 +427,7 @@ ${JSON.stringify(cardsList, null, 2)}`;
     required: cards.map(c => c.id)
   };
 
-  const responseText = await generateContent(genAI, prompt, responseSchema);
+  const responseText = await generateContent(apiKeys, prompt, responseSchema);
   let distractors = parseAIResponse<Record<string, string[]>>(responseText);
 
   // Handle array response by converting to object if needed
@@ -298,7 +458,7 @@ ${JSON.stringify(cardsList, null, 2)}`;
  * Generates flashcards from text content
  */
 async function handleGenerateFromText(
-  genAI: GoogleGenAI,
+  apiKeys: string[],
   text: string,
   numQuestions: number
 ): Promise<Response> {
@@ -315,7 +475,7 @@ RULES:
 Source text:
 ${text}`;
 
-  const responseText = await generateContent(genAI, prompt, flashcardArraySchema as Record<string, unknown>);
+  const responseText = await generateContent(apiKeys, prompt, flashcardArraySchema as Record<string, unknown>);
   const parsedData = parseAIResponse<unknown>(responseText);
   const cards = normalizeFlashcards(parsedData);
 
@@ -326,7 +486,7 @@ ${text}`;
  * Generates flashcards from PDF content
  */
 async function handleGenerateFromPDF(
-  genAI: GoogleGenAI,
+  apiKeys: string[],
   pdfBase64: string,
   numQuestions: number
 ): Promise<Response> {
@@ -341,7 +501,7 @@ RULES:
 - Return a JSON array of objects, each with "front" (question) and "back" (answer) properties`;
 
   const responseText = await generateContent(
-    genAI,
+    apiKeys,
     prompt,
     flashcardArraySchema as Record<string, unknown>,
     { mimeType: "application/pdf", data: pdfBase64 }
@@ -363,12 +523,16 @@ serve(async (req: Request) => {
   }
 
   try {
-    const apiKey = Deno.env.get("GOOGLE_AI_KEY");
-    if (!apiKey) {
-      throw new Error("GOOGLE_AI_KEY environment variable is not set");
+    // Get all available API keys
+    const apiKeys = getApiKeys();
+    if (apiKeys.length === 0) {
+      throw new Error("No GOOGLE_AI_KEY environment variable is set. Please set GOOGLE_AI_KEY (and optionally GOOGLE_AI_KEY_2, GOOGLE_AI_KEY_3, etc.)");
     }
 
-    const genAI = new GoogleGenAI({ apiKey });
+    // Reset failed keys for this request
+    resetFailedKeys();
+
+    console.log(`Using ${apiKeys.length} API key(s) for load balancing`);
 
     const { action, topic, numQuestions = DEFAULT_NUM_QUESTIONS, cards, text, pdfBase64 } =
       (await req.json()) as FlashcardRequest;
@@ -381,28 +545,28 @@ serve(async (req: Request) => {
         if (!topic) {
           throw new Error("Topic is required for generateDeck action");
         }
-        return await handleGenerateDeck(genAI, topic, numQuestions);
+        return await handleGenerateDeck(apiKeys, topic, numQuestions);
       }
 
       case "generateDistractors": {
         if (!cards || !Array.isArray(cards) || cards.length === 0) {
           throw new Error("Cards array is required for generateDistractors action");
         }
-        return await handleGenerateDistractors(genAI, cards);
+        return await handleGenerateDistractors(apiKeys, cards);
       }
 
       case "generateFromText": {
         if (!text) {
           throw new Error("Text is required for generateFromText action");
         }
-        return await handleGenerateFromText(genAI, text, numQuestions);
+        return await handleGenerateFromText(apiKeys, text, numQuestions);
       }
 
       case "generateFromPDF": {
         if (!pdfBase64) {
           throw new Error("PDF base64 data is required for generateFromPDF action");
         }
-        return await handleGenerateFromPDF(genAI, pdfBase64, numQuestions);
+        return await handleGenerateFromPDF(apiKeys, pdfBase64, numQuestions);
       }
 
       default:
