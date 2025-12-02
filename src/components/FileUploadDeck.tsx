@@ -107,14 +107,16 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
               accept=".txt,.pdf,.doc,.docx"
               onChange={(e) => handleFileUpload(e, 'text')}
               className="block w-full text-sm text-neo-gray font-medium
-                file:mr-4 file:py-2.5 file:px-4
+                file:mr-4 file:py-3.5 file:px-6
                 file:rounded-full file:border-2 file:border-neo-border
                 file:text-sm file:font-bold
                 file:bg-neo-green file:text-white
-                hover:file:bg-neo-charcoal
-                file:transition-colors file:duration-200
-                file:shadow-neo hover:file:shadow-neo-hover
-                cursor-pointer"
+                file:shadow-neo
+                hover:file:shadow-neo-hover hover:file:translate-x-[-2px] hover:file:translate-y-[-2px]
+                active:file:shadow-neo-active active:file:translate-x-[1px] active:file:translate-y-[1px]
+                file:transition-all file:duration-200
+                cursor-pointer
+                disabled:file:opacity-50 disabled:file:cursor-not-allowed"
               disabled={isLoading}
             />
           </div>
@@ -131,20 +133,22 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
             </div>
             Import Existing Q&A Pairs
           </h4>
-          <div className="relative group">
+          <div className="relative group overflow-visible">
             <input
               type="file"
               accept=".csv,.xlsx,.xls,.json"
               onChange={(e) => handleFileUpload(e, 'qa')}
               className="block w-full text-sm text-neo-gray font-medium
-                file:mr-4 file:py-2.5 file:px-4
+                file:mr-4 file:py-3.5 file:px-6
                 file:rounded-full file:border-2 file:border-neo-border
                 file:text-sm file:font-bold
                 file:bg-neo-accent-blue file:text-neo-charcoal
-                hover:file:bg-neo-charcoal hover:file:text-white
-                file:transition-colors file:duration-200
-                file:shadow-neo hover:file:shadow-neo-hover
-                cursor-pointer"
+                file:shadow-neo
+                hover:file:shadow-neo-hover hover:file:translate-x-[-2px] hover:file:translate-y-[-2px]
+                active:file:shadow-neo-active active:file:translate-x-[1px] active:file:translate-y-[1px]
+                file:transition-all file:duration-200
+                cursor-pointer
+                disabled:file:opacity-50 disabled:file:cursor-not-allowed"
               disabled={isLoading}
             />
           </div>

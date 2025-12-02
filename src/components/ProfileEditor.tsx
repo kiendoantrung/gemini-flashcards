@@ -49,9 +49,9 @@ export function ProfileEditor({ user, onUpdate, onClose }: ProfileEditorProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-dark/50 flex items-center justify-center p-4 z-50">
+    <div className="fixed inset-0 bg-dark/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-neo-cream rounded-2xl max-w-md w-full p-8 border-2 border-dark neo-shadow animate-scale-in">
-        <h2 className="text-3xl font-heading font-bold mb-8 text-center text-dark">✏️ Edit Profile</h2>
+        <h2 className="text-3xl font-heading font-bold mb-8 text-center text-dark">Edit Profile</h2>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="flex justify-center mb-8">
@@ -106,7 +106,7 @@ export function ProfileEditor({ user, onUpdate, onClose }: ProfileEditorProps) {
 
           {error && (
             <div className="text-dark text-sm bg-accent-pink/30 p-3 rounded-xl border-2 border-dark text-center neo-shadow">
-              ⚠️ {error}
+              {error}
             </div>
           )}
 
@@ -114,16 +114,16 @@ export function ProfileEditor({ user, onUpdate, onClose }: ProfileEditorProps) {
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 text-dark bg-white border-2 border-dark rounded-full font-semibold hover:bg-gray-100 transition-all neo-shadow hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none"
+              className="px-6 py-2.5 text-neo-charcoal bg-neo-pink border-2 border-neo-border rounded-full font-semibold hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all shadow-neo"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="px-6 py-2.5 text-dark bg-primary-green border-2 border-dark rounded-full font-semibold hover:bg-green-400 transition-all neo-shadow hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2.5 text-white bg-neo-green border-2 border-neo-border rounded-full font-semibold hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all shadow-neo disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? '💾 Saving...' : '💾 Save Changes'}
+              {isLoading ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </form>
