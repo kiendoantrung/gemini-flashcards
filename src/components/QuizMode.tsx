@@ -129,7 +129,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
 
           <button
             onClick={onExit}
-            className="inline-flex items-center gap-2 px-10 py-4 rounded-full bg-neo-green text-white font-bold border-2 border-neo-border shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all text-lg"
+            className="inline-flex items-center gap-2 px-10 py-4 rounded-full bg-neo-green text-white font-bold border-2 border-neo-border shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all text-lg"
           >
             <RotateCcw className="w-5 h-5" />
             Back to Decks

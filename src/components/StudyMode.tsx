@@ -100,7 +100,7 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
           disabled={isFirst}
           className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold border-2 border-neo-border transition-all ${isFirst
             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            : 'bg-white text-neo-charcoal shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px]'
+            : 'bg-white text-neo-charcoal shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px]'
             }`}
         >
           <ArrowLeft className="w-4 h-4" />
@@ -111,7 +111,7 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
           disabled={isLast}
           className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold border-2 border-neo-border transition-all ${isLast
             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            : 'bg-neo-green text-white shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px]'
+            : 'bg-neo-green text-white shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px]'
             }`}
         >
           Next
@@ -120,7 +120,7 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
         {isLast && (
           <button
             onClick={() => setShowQuiz(true)}
-            className="flex items-center gap-2 px-6 py-3 rounded-full font-bold border-2 border-neo-border bg-neo-accent-blue text-neo-charcoal shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all"
+            className="flex items-center gap-2 px-6 py-3 rounded-full font-bold border-2 border-neo-border bg-neo-accent-blue text-neo-charcoal shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all"
           >
             <CheckCircle className="w-4 h-4" />
             Take Quiz
