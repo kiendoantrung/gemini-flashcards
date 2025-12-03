@@ -1,4 +1,4 @@
 User-agent: *
-Disallow: 
-Disallow: /cgi-bin/
-Sitemap: https://gemini-flashcards.vercel.app/
+Allow: /
+
+Sitemap: https://gemini-flashcards.vercel.app/sitemap.xml
