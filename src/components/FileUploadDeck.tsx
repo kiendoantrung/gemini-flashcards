@@ -11,10 +11,19 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [numQuestions, setNumQuestions] = useState(10);
+  const [textFileName, setTextFileName] = useState<string | null>(null);
+  const [qaFileName, setQaFileName] = useState<string | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'text' | 'qa') => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Update file name display
+    if (type === 'text') {
+      setTextFileName(file.name);
+    } else {
+      setQaFileName(file.name);
+    }
 
     setIsLoading(true);
     setError(null);
@@ -101,24 +110,23 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
               />
             </label>
           </div>
-          <div className="relative group">
-            <input
-              type="file"
-              accept=".txt,.pdf,.doc,.docx"
-              onChange={(e) => handleFileUpload(e, 'text')}
-              className="block w-full text-sm text-neo-gray font-medium
-                file:mr-4 file:py-3.5 file:px-6
-                file:rounded-full file:border-2 file:border-neo-border
-                file:text-sm file:font-bold
-                file:bg-neo-green file:text-white
-                file:shadow-neo
-                hover:file:shadow-neo-hover hover:file:translate-x-[-2px] hover:file:translate-y-[-2px]
-                active:file:shadow-neo-active active:file:translate-x-[1px] active:file:translate-y-[1px]
-                file:transition-all file:duration-200
-                cursor-pointer
-                disabled:file:opacity-50 disabled:file:cursor-not-allowed"
-              disabled={isLoading}
-            />
+          <div className="flex items-center gap-2">
+            <label
+              className={`inline-flex items-center gap-1.5 py-2 px-4 rounded-full border-2 border-neo-border text-xs font-bold bg-neo-green text-white shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all duration-200 cursor-pointer whitespace-nowrap ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Choose File
+              <input
+                type="file"
+                accept=".txt,.pdf,.doc,.docx"
+                onChange={(e) => handleFileUpload(e, 'text')}
+                className="sr-only"
+                disabled={isLoading}
+              />
+            </label>
+            <span className="text-xs text-neo-gray font-medium truncate max-w-[100px]" title={textFileName || undefined}>
+              {textFileName || 'No file chosen'}
+            </span>
           </div>
           <p className="mt-2 text-xs text-neo-gray flex items-center font-medium">
             <Upload className="w-3 h-3 mr-1 text-neo-green" />
@@ -133,24 +141,23 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
             </div>
             Import Existing Q&A Pairs
           </h4>
-          <div className="relative group overflow-visible">
-            <input
-              type="file"
-              accept=".csv,.xlsx,.xls,.json"
-              onChange={(e) => handleFileUpload(e, 'qa')}
-              className="block w-full text-sm text-neo-gray font-medium
-                file:mr-4 file:py-3.5 file:px-6
-                file:rounded-full file:border-2 file:border-neo-border
-                file:text-sm file:font-bold
-                file:bg-neo-accent-blue file:text-neo-charcoal
-                file:shadow-neo
-                hover:file:shadow-neo-hover hover:file:translate-x-[-2px] hover:file:translate-y-[-2px]
-                active:file:shadow-neo-active active:file:translate-x-[1px] active:file:translate-y-[1px]
-                file:transition-all file:duration-200
-                cursor-pointer
-                disabled:file:opacity-50 disabled:file:cursor-not-allowed"
-              disabled={isLoading}
-            />
+          <div className="flex items-center gap-2">
+            <label
+              className={`inline-flex items-center gap-1.5 py-2 px-4 rounded-full border-2 border-neo-border text-xs font-bold bg-neo-accent-blue text-neo-charcoal shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all duration-200 cursor-pointer whitespace-nowrap ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Choose File
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls,.json"
+                onChange={(e) => handleFileUpload(e, 'qa')}
+                className="sr-only"
+                disabled={isLoading}
+              />
+            </label>
+            <span className="text-xs text-neo-gray font-medium truncate max-w-[100px]" title={qaFileName || undefined}>
+              {qaFileName || 'No file chosen'}
+            </span>
           </div>
           <p className="mt-2 text-xs text-neo-gray flex items-center font-medium">
             <Upload className="w-3 h-3 mr-1 text-neo-accent-blue" />
