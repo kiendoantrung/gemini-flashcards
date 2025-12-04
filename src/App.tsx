@@ -15,9 +15,10 @@ import { CreateDeckModal } from './components/CreateDeckModal';
 import { AuthCallback } from './components/AuthCallback';
 import { Home } from './components/Home';
 import { EditDeckPage } from './components/EditDeckPage';
+import { ToastProvider, useToast } from './components/Toast';
 
 
-function App() {
+function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(true);
   const [decks, setDecks] = useState<Deck[]>([]);
@@ -27,6 +28,7 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [editingDeck, setEditingDeck] = useState<Deck | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     const handleAuthStateChange = async () => {
@@ -89,9 +91,9 @@ function App() {
 
   const handleAuthError = (error: any) => {
     if (error.message?.includes('not authorized')) {
-      alert('This email is not authorized. Please contact administrator or use a different email.');
+      showToast('This email is not authorized. Please contact administrator or use a different email.', 'error');
     } else {
-      alert('Authentication failed. Please try again.');
+      showToast('Authentication failed. Please try again.', 'error');
     }
   };
 
@@ -125,7 +127,7 @@ function App() {
         prevDeck?.id === deckId ? { ...prevDeck, ...updates } : prevDeck
       );
 
-      alert('Deck updated successfully!');
+      showToast('Deck updated successfully!', 'success');
 
     } catch (error) {
       console.error('Failed to update deck:', error);
@@ -305,6 +307,14 @@ function App() {
       </main>
 
     </div>
+  );
+}
+
+function App() {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   );
 }
 

@@ -67,7 +67,7 @@ export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
 
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-heading font-bold text-dark">
-            ✏️ Edit Deck
+            Edit Deck
           </h1>
           <button
             onClick={() => {
@@ -199,7 +199,7 @@ export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
                 type="submit"
                 className="px-6 py-2.5 text-sm font-semibold rounded-full text-dark bg-primary-green border-2 border-dark hover:bg-green-400 transition-all"
               >
-                💾 Save Changes
+                Save Changes
               </button>
             </div>
           </div>
