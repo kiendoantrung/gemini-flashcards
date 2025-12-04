@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { loginWithEmail } from '../services/authService';
 import { supabase } from '../lib/supabase';
 import { GraduationCap } from 'lucide-react';
+import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
 
 interface LoginProps {
   onLogin: () => void;
@@ -14,16 +15,29 @@ export function Login({ onLogin, onError, onToggleForm }: LoginProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [isCaptchaReady, setIsCaptchaReady] = useState(false);
+  const turnstileRef = useRef<TurnstileInstance>(null);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!captchaToken) {
+      setError('Please complete the CAPTCHA verification');
+      return;
+    }
+    
     setIsLoading(true);
     setError(null);
 
-    const response = await loginWithEmail(email, password);
+    const response = await loginWithEmail(email, password, captchaToken);
     if (response.error) {
       setError(response.error);
       onError(response.error);
+      // Reset captcha on error
+      turnstileRef.current?.reset();
+      setCaptchaToken(null);
+      setIsCaptchaReady(false);
     } else {
       onLogin();
     }
@@ -88,9 +102,32 @@ export function Login({ onLogin, onError, onToggleForm }: LoginProps) {
             <div className="text-red-600 text-sm bg-neo-pink/20 p-4 rounded-neo-md border-2 border-red-300 font-medium">{error}</div>
           )}
 
+          <div className="flex justify-center">
+            <Turnstile
+              ref={turnstileRef}
+              siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
+              onSuccess={(token) => {
+                setCaptchaToken(token);
+                setIsCaptchaReady(true);
+              }}
+              onError={() => {
+                setCaptchaToken(null);
+                setIsCaptchaReady(false);
+                setError('CAPTCHA verification failed. Please try again.');
+              }}
+              onExpire={() => {
+                setCaptchaToken(null);
+                setIsCaptchaReady(false);
+              }}
+              options={{
+                theme: 'light',
+              }}
+            />
+          </div>
+
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || !isCaptchaReady}
             className="w-full bg-neo-green text-white py-3.5 rounded-full font-bold border-2 border-neo-border shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? 'Signing in...' : 'Sign in'}

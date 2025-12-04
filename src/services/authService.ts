@@ -1,9 +1,12 @@
 import { supabase } from '../lib/supabase';
 
-export async function loginWithEmail(email: string, password: string) {
+export async function loginWithEmail(email: string, password: string, captchaToken?: string) {
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
-    password
+    password,
+    options: {
+      captchaToken
+    }
   });
 
   if (error) {
@@ -31,14 +34,15 @@ export async function loginWithGoogle() {
   }
 }
 
-export const signup = async (email: string, password: string, name: string) => {
+export const signup = async (email: string, password: string, name: string, captchaToken?: string) => {
   try {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { name },
-        emailRedirectTo: undefined // Remove email redirect
+        emailRedirectTo: undefined, // Remove email redirect
+        captchaToken
       }
     });
 

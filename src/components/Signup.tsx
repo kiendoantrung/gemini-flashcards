@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { signup } from '../services/authService';
 import { GraduationCap } from 'lucide-react';
+import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
 
 interface SignupProps {
   onSignup: () => void;
@@ -16,6 +17,9 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
   const [isLoading, setIsLoading] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isLinkExpired, setIsLinkExpired] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [isCaptchaReady, setIsCaptchaReady] = useState(false);
+  const turnstileRef = useRef<TurnstileInstance>(null);
 
   React.useEffect(() => {
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -42,15 +46,25 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!captchaToken) {
+      setError('Please complete the CAPTCHA verification');
+      return;
+    }
+    
     setIsLoading(true);
     setError(null);
 
     try {
-      const { data } = await signup(email, password, name);
+      const { data } = await signup(email, password, name, captchaToken);
       if (!data.user || !data.session) {
         const errorMessage = 'Signup failed. Please try again.';
         setError(errorMessage);
         onError(errorMessage);
+        // Reset captcha on error
+        turnstileRef.current?.reset();
+        setCaptchaToken(null);
+        setIsCaptchaReady(false);
       } else {
         onSignup();
       }
@@ -58,22 +72,34 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
       const errorMessage = err instanceof Error ? err.message : 'Signup failed. Please try again.';
       setError(errorMessage);
       onError(errorMessage);
+      // Reset captcha on error
+      turnstileRef.current?.reset();
+      setCaptchaToken(null);
+      setIsCaptchaReady(false);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleResendVerification = async () => {
+    if (!captchaToken) {
+      setError('Please complete the CAPTCHA verification');
+      return;
+    }
+    
     setError(null);
     setIsLinkExpired(false);
     setCountdown(54);
 
     try {
-      const { data } = await signup(email, password, name);
+      const { data } = await signup(email, password, name, captchaToken);
       if (!data.user || !data.session) {
         const errorMessage = 'Signup failed. Please try again.';
         setError(errorMessage);
         onError(errorMessage);
+        turnstileRef.current?.reset();
+        setCaptchaToken(null);
+        setIsCaptchaReady(false);
       } else {
         onSignup();
       }
@@ -81,6 +107,9 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
       const errorMessage = err instanceof Error ? err.message : 'Signup failed. Please try again.';
       setError(errorMessage);
       onError(errorMessage);
+      turnstileRef.current?.reset();
+      setCaptchaToken(null);
+      setIsCaptchaReady(false);
     }
   };
 
@@ -155,9 +184,32 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
             </div>
           )}
 
+          <div className="flex justify-center">
+            <Turnstile
+              ref={turnstileRef}
+              siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
+              onSuccess={(token) => {
+                setCaptchaToken(token);
+                setIsCaptchaReady(true);
+              }}
+              onError={() => {
+                setCaptchaToken(null);
+                setIsCaptchaReady(false);
+                setError('CAPTCHA verification failed. Please try again.');
+              }}
+              onExpire={() => {
+                setCaptchaToken(null);
+                setIsCaptchaReady(false);
+              }}
+              options={{
+                theme: 'light',
+              }}
+            />
+          </div>
+
           <button
             type="submit"
-            disabled={isLoading || (countdown !== null && countdown > 0)}
+            disabled={isLoading || !isCaptchaReady || (countdown !== null && countdown > 0)}
             className="w-full bg-neo-green text-white py-3.5 rounded-full font-bold border-2 border-neo-border shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? 'Creating account...' : 'Sign Up'}
