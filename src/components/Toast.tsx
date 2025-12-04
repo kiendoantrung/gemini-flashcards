@@ -29,15 +29,20 @@ const ToastItem = ({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
 
   useEffect(() => {
     // Trigger enter animation
-    setTimeout(() => setIsVisible(true), 10);
+    const enterTimer = setTimeout(() => setIsVisible(true), 10);
 
     // Auto remove after 4 seconds
-    const timer = setTimeout(() => {
+    let removeTimer: ReturnType<typeof setTimeout>;
+    const autoHideTimer = setTimeout(() => {
       setIsLeaving(true);
-      setTimeout(() => onRemove(toast.id), 300);
+      removeTimer = setTimeout(() => onRemove(toast.id), 300);
     }, 4000);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(enterTimer);
+      clearTimeout(autoHideTimer);
+      clearTimeout(removeTimer);
+    };
   }, [toast.id, onRemove]);
 
   const handleClose = () => {

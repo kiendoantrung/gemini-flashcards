@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 
 export function AuthCallback() {
   useEffect(() => {
+    let isCancelled = false;
+
     // Xử lý hash fragment từ URL
     const handleAuthCallback = async () => {
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -15,19 +17,25 @@ export function AuthCallback() {
           
           if (error) throw error;
           
-          if (session) {
+          if (session && !isCancelled) {
             // Redirect về trang chính sau khi xác thực thành công
             window.location.href = '/';
           }
         } catch (error) {
           console.error('Auth callback error:', error);
           // Redirect về trang login nếu có lỗi
-          window.location.href = '/login';
+          if (!isCancelled) {
+            window.location.href = '/login';
+          }
         }
       }
     };
 
     handleAuthCallback();
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   return (
