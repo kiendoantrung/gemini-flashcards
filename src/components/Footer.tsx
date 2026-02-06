@@ -1,6 +1,9 @@
+import { useMemo } from 'react';
 import { GraduationCap, Brain, Sparkles, Layers } from 'lucide-react';
 
 export function Footer() {
+  const currentYear = useMemo(() => new Date().getFullYear(), []);
+
   return (
     <footer className="bg-neo-charcoal text-white py-16 border-t-2 border-neo-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -79,7 +82,7 @@ export function Footer() {
         <div className="mt-12 pt-8 border-t border-gray-700">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-gray-400">
-              &copy; {new Date().getFullYear()} Gemini Flashcards. Made with ❤️ for students everywhere.
+              &copy; {currentYear} Gemini Flashcards. Made with ❤️ for students everywhere.
             </p>
             <div className="flex gap-6">
               <a href="/privacy" className="text-sm text-gray-400 hover:text-neo-green transition-colors">Privacy</a>

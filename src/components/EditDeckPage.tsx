@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { ArrowLeft, Trash2, Plus, Save } from 'lucide-react';
 import type { Deck } from '../types/flashcard';
 
@@ -39,20 +39,21 @@ export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
     });
   };
 
-  const handleCardChange = (index: number, field: 'front' | 'back', value: string) => {
-    const newCards = [...cards];
-    newCards[index] = { ...newCards[index], [field]: value };
-    setCards(newCards);
-  };
+  const handleCardChange = useCallback((index: number, field: 'front' | 'back', value: string) => {
+    setCards(prevCards => {
+      const newCards = [...prevCards];
+      newCards[index] = { ...newCards[index], [field]: value };
+      return newCards;
+    });
+  }, []);
 
-  const addCard = () => {
-    setCards([...cards, { id: crypto.randomUUID(), front: '', back: '' }]);
-  };
+  const addCard = useCallback(() => {
+    setCards(prevCards => [...prevCards, { id: crypto.randomUUID(), front: '', back: '' }]);
+  }, []);
 
-  const removeCard = (index: number) => {
-    const newCards = cards.filter((_, i) => i !== index);
-    setCards(newCards);
-  };
+  const removeCard = useCallback((index: number) => {
+    setCards(prevCards => prevCards.filter((_, i) => i !== index));
+  }, []);
 
   return (
     <div className="min-h-screen bg-neo-cream">

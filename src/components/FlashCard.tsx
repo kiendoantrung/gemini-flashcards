@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Flashcard } from '../types/flashcard';
 
 interface FlashCardProps {
@@ -9,10 +9,24 @@ interface FlashCardProps {
 export function FlashCard({ card, showAnswer = false }: FlashCardProps) {
   const [isFlipped, setIsFlipped] = useState(showAnswer);
 
+  // Sync isFlipped state when showAnswer prop changes
+  useEffect(() => {
+    setIsFlipped(showAnswer);
+  }, [showAnswer]);
+
   return (
     <div
-      className="relative w-full h-80 md:h-96 cursor-pointer perspective-1000 group"
+      role="button"
+      aria-label={isFlipped ? `Answer: ${card.back}. Press to see question.` : `Question: ${card.front}. Press to see answer.`}
+      tabIndex={0}
+      className="relative w-full h-80 md:h-96 cursor-pointer perspective-1000 group focus:outline-none focus:ring-2 focus:ring-neo-green focus:ring-offset-2 rounded-neo-xl"
       onClick={() => setIsFlipped(!isFlipped)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setIsFlipped(!isFlipped);
+        }
+      }}
     >
       <div
         className={`relative w-full h-full duration-500 preserve-3d ${isFlipped ? 'rotate-y-180' : ''

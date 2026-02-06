@@ -6,11 +6,10 @@ interface AvatarProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
 }
 
+const AVATAR_COLORS = ['#BBE6F0', '#22C55E', '#FF9F9F', '#FCD34D', '#A5D6E8'];
+
 export function Avatar({ name, imageUrl, size = 'md' }: AvatarProps) {
   const initials = name.charAt(0).toUpperCase();
-
-  // Neo-Brutalism color palette
-  const colors = ['#BBE6F0', '#22C55E', '#FF9F9F', '#FCD34D', '#A5D6E8'];
 
   const backgroundColor = useMemo(() => {
     // Generate consistent color based on name
@@ -18,7 +17,7 @@ export function Avatar({ name, imageUrl, size = 'md' }: AvatarProps) {
     for (let i = 0; i < name.length; i++) {
       hash = name.charCodeAt(i) + ((hash << 5) - hash);
     }
-    return colors[Math.abs(hash) % colors.length];
+    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
   }, [name]);
 
   const sizeClasses = {

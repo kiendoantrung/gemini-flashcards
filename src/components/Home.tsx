@@ -1,4 +1,5 @@
-import { GraduationCap, Brain, Zap, Sparkles, Star, BookOpen, Clock, Upload, Play, ChevronRight, FileText, Layers } from 'lucide-react';
+import React from 'react';
+import { GraduationCap, Brain, Zap, Sparkles, Star, Upload, Play, ChevronRight, FileText, Layers } from 'lucide-react';
 import { Footer } from './Footer';
 
 export function Home() {
@@ -49,17 +50,17 @@ export function Home() {
                 <div className="inline-flex items-center gap-2 px-4 py-2 bg-neo-green/10 rounded-full border-2 border-neo-border">
                   <span className="text-neo-green font-bold text-sm">✨ Powered by Google Gemini AI</span>
                 </div>
-                
+
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-heading font-extrabold text-neo-charcoal leading-tight">
                   Create Flashcards
                   <span className="block text-neo-green">Instantly</span>
                   <span className="block">with AI Magic!</span>
                 </h1>
-                
+
                 <p className="text-lg text-neo-gray max-w-lg leading-relaxed">
                   Upload any document, paste text, or describe a topic - our AI will generate perfect flashcards for you in seconds. Study smarter, not harder!
                 </p>
-                
+
                 <div className="flex flex-wrap gap-4">
                   <a
                     href="/login"
@@ -75,7 +76,7 @@ export function Home() {
                     See How It Works
                   </a>
                 </div>
-                
+
                 {/* Stats */}
                 <div className="flex gap-8 pt-4">
                   <div>
@@ -92,7 +93,7 @@ export function Home() {
                   </div>
                 </div>
               </div>
-              
+
               {/* Hero Card */}
               <div className="relative hidden md:block">
                 <div className="bg-white rounded-neo-xl border-2 border-neo-border shadow-neo-lg p-6 max-w-sm ml-auto">
@@ -121,7 +122,7 @@ export function Home() {
                     Continue Studying
                   </button>
                 </div>
-                
+
                 {/* Floating elements */}
                 <div className="absolute -top-4 -right-4 w-12 h-12 bg-neo-yellow rounded-full border-2 border-neo-border flex items-center justify-center animate-float">
                   <Sparkles className="w-6 h-6 text-neo-charcoal" />
@@ -149,24 +150,24 @@ export function Home() {
                 From document to study-ready flashcards in seconds
               </p>
             </div>
-            
+
             {/* Step Cards */}
             <div className="grid md:grid-cols-3 gap-6">
-              <StepCard 
+              <StepCard
                 step={1}
                 icon={<Upload className="w-8 h-8 text-neo-charcoal" />}
                 iconBg="bg-neo-accent-blue"
                 title="Upload or Paste Content"
                 description="Upload PDFs, Word docs, images, or simply paste text. You can also describe a topic and let AI do the rest."
               />
-              <StepCard 
+              <StepCard
                 step={2}
                 icon={<Sparkles className="w-8 h-8 text-neo-charcoal" />}
                 iconBg="bg-neo-yellow"
                 title="AI Generates Flashcards"
                 description="Google Gemini AI analyzes your content and creates smart, well-structured question-answer flashcards."
               />
-              <StepCard 
+              <StepCard
                 step={3}
                 icon={<Play className="w-8 h-8 text-neo-charcoal" />}
                 iconBg="bg-neo-pink"
@@ -188,7 +189,7 @@ export function Home() {
                 Everything You Need to Study Smarter
               </h2>
             </div>
-            
+
             <div className="grid md:grid-cols-4 gap-6">
               <FeatureCard
                 icon={<Brain className="w-6 h-6 text-neo-charcoal" />}
@@ -225,7 +226,7 @@ export function Home() {
                 Loved by Students Worldwide
               </h2>
             </div>
-            
+
             <div className="grid md:grid-cols-3 gap-6">
               <TestimonialCard
                 rating={5}
@@ -286,24 +287,24 @@ export function Home() {
           </div>
         </section>
       </main>
-      
+
       <Footer />
     </div>
   );
 }
 
-// Step Card Component
-function StepCard({ 
+// Step Card Component - Memoized to prevent unnecessary re-renders
+const StepCard = React.memo(function StepCard({
   step,
-  icon, 
-  iconBg, 
-  title, 
-  description 
-}: { 
+  icon,
+  iconBg,
+  title,
+  description
+}: {
   step: number;
-  icon: React.ReactNode; 
+  icon: React.ReactNode;
   iconBg: string;
-  title: string; 
+  title: string;
   description: string;
 }) {
   return (
@@ -318,10 +319,10 @@ function StepCard({
       <p className="text-neo-gray text-sm leading-relaxed">{description}</p>
     </div>
   );
-}
+});
 
-// Feature Card Component
-function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+// Feature Card Component - Memoized to prevent unnecessary re-renders
+const FeatureCard = React.memo(function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
     <div className="bg-white rounded-neo-lg border-2 border-neo-border shadow-neo p-6 text-center hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all">
       <div className="w-14 h-14 bg-neo-cream rounded-neo-md border-2 border-neo-border mx-auto mb-4 flex items-center justify-center">
@@ -331,20 +332,20 @@ function FeatureCard({ icon, title, description }: { icon: React.ReactNode; titl
       <p className="text-neo-gray text-sm leading-relaxed">{description}</p>
     </div>
   );
-}
+});
 
-// Testimonial Card Component
-function TestimonialCard({ 
-  rating, 
-  text, 
-  name, 
-  role, 
-  avatarColor 
-}: { 
-  rating: number; 
-  text: string; 
-  name: string; 
-  role: string; 
+// Testimonial Card Component - Memoized to prevent unnecessary re-renders
+const TestimonialCard = React.memo(function TestimonialCard({
+  rating,
+  text,
+  name,
+  role,
+  avatarColor
+}: {
+  rating: number;
+  text: string;
+  name: string;
+  role: string;
   avatarColor: string;
 }) {
   return (
@@ -366,4 +367,4 @@ function TestimonialCard({
       </div>
     </div>
   );
-}
+});

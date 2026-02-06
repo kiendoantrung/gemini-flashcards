@@ -20,7 +20,7 @@ export async function uploadAvatar(userId: string, file: File) {
     const fileName = `${userId}-${Date.now()}.${fileExt}`;
 
     // Upload the file
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from(AVATAR_BUCKET)
       .upload(fileName, file, {
         cacheControl: '3600',

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Wand2, Loader2 } from 'lucide-react';
 import { generateDeck } from '../services/aiService';
 import type { Deck } from '../types/flashcard';
+import { createDeckFormSchema, validateField, topicSchema } from '../utils/validation';
 
 interface CreateDeckProps {
   onDeckCreated: (deck: Deck) => void;
@@ -12,16 +13,38 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
   const [numQuestions, setNumQuestions] = useState(10);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ topic?: string; numQuestions?: string }>({});
   const [retryCount, setRetryCount] = useState(0);
 
   const MAX_RETRIES = 3;
 
+  // Validate topic field on blur
+  const handleTopicBlur = useCallback(() => {
+    const result = validateField(topicSchema, topic);
+    setFieldErrors(prev => ({ ...prev, topic: result.error ?? undefined }));
+  }, [topic]);
+
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate entire form
+    const validationResult = createDeckFormSchema.safeParse({ topic: topic.trim(), numQuestions });
+    if (!validationResult.success) {
+      const errors = validationResult.error.flatten().fieldErrors;
+      setFieldErrors({
+        topic: errors.topic?.[0],
+        numQuestions: errors.numQuestions?.[0],
+      });
+      setError('Please fix the errors above');
+      return;
+    }
+
     if (!topic.trim()) return;
 
     setIsLoading(true);
     setError(null);
+    setFieldErrors({});
     setRetryCount(0);
 
     const attemptGeneration = async (attempt: number): Promise<void> => {
@@ -58,10 +81,14 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
           id="topic"
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
+          onBlur={handleTopicBlur}
           placeholder="Enter a topic (e.g., 'Basic Python Concepts')"
-          className="w-full px-4 py-3 rounded-neo-md border-2 border-neo-border bg-neo-cream focus:ring-2 focus:ring-neo-green focus:border-neo-green text-neo-charcoal placeholder-neo-gray/60 transition-all font-medium"
+          className={`w-full px-4 py-3 rounded-neo-md border-2 bg-neo-cream focus:ring-2 focus:ring-neo-green focus:border-neo-green text-neo-charcoal placeholder-neo-gray/60 transition-all font-medium ${fieldErrors.topic ? 'border-red-300' : 'border-neo-border'}`}
           disabled={isLoading}
         />
+        {fieldErrors.topic && (
+          <p className="mt-1 text-sm text-red-600 font-medium">{fieldErrors.topic}</p>
+        )}
         <p className="mt-2 text-xs text-neo-gray flex items-center font-medium">
           <Wand2 className="w-3 h-3 mr-1 text-neo-green" />
           Be specific about the topic to get better results

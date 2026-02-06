@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import type { User } from '@supabase/supabase-js';
 import { updateProfile, updatePassword } from '../services/authService';
 import { AvatarUpload } from './AvatarUpload';
 
 interface ProfileEditorProps {
-  user: any;
+  user: User | null;
   onUpdate: () => void;
   onClose: () => void;
 }
@@ -15,6 +16,8 @@ export function ProfileEditor({ user, onUpdate, onClose }: ProfileEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(user?.user_metadata?.avatar_url || null);
+
+  if (!user) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

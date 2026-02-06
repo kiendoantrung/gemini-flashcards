@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ArrowLeft, ArrowRight, RotateCcw, CheckCircle } from 'lucide-react';
 import type { Deck } from '../types/flashcard';
 import { FlashCard } from './FlashCard';
@@ -12,9 +12,23 @@ interface StudyModeProps {
 export function StudyMode({ deck, onExit }: StudyModeProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showQuiz, setShowQuiz] = useState(false);
+  const cardCount = deck.cards?.length ?? 0;
+
+  useEffect(() => {
+    // Keep index valid when deck changes (e.g. after editing cards)
+    setCurrentIndex((prev) => Math.min(prev, Math.max(cardCount - 1, 0)));
+  }, [cardCount]);
+
+  const handlePrevious = useCallback(() => {
+    setCurrentIndex(prev => prev > 0 ? prev - 1 : prev);
+  }, []);
+
+  const handleNext = useCallback(() => {
+    setCurrentIndex(prev => prev < cardCount - 1 ? prev + 1 : prev);
+  }, [cardCount]);
 
   // Safety check: ensure deck has cards
-  if (!deck.cards || deck.cards.length === 0) {
+  if (cardCount === 0) {
     return (
       <div className="max-w-4xl mx-auto text-center py-12">
         <div className="bg-white rounded-neo-xl border-2 border-neo-border shadow-neo p-8">
@@ -32,7 +46,7 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
   }
 
   const currentCard = deck.cards[currentIndex];
-  
+
   // Safety check: ensure currentCard exists
   if (!currentCard) {
     return (
@@ -52,15 +66,7 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
   }
 
   const isFirst = currentIndex === 0;
-  const isLast = currentIndex === deck.cards.length - 1;
-
-  const handlePrevious = () => {
-    if (!isFirst) setCurrentIndex(currentIndex - 1);
-  };
-
-  const handleNext = () => {
-    if (!isLast) setCurrentIndex(currentIndex + 1);
-  };
+  const isLast = currentIndex === cardCount - 1;
 
   if (showQuiz) {
     return <QuizMode deck={deck} onExit={onExit} />;
@@ -78,15 +84,15 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
         </button>
         <h2 className="text-xl font-heading font-bold text-neo-charcoal">{deck.title}</h2>
         <div className="px-3 py-1.5 bg-neo-yellow/30 rounded-full border-2 border-neo-border text-sm font-bold text-neo-charcoal">
-          {currentIndex + 1} / {deck.cards.length}
+          {currentIndex + 1} / {cardCount}
         </div>
       </div>
 
       {/* Progress Bar */}
       <div className="mb-6 h-3 bg-neo-cream rounded-full border-2 border-neo-border overflow-hidden">
-        <div 
+        <div
           className="h-full bg-neo-green transition-all duration-300 rounded-full"
-          style={{ width: `${((currentIndex + 1) / deck.cards.length) * 100}%` }}
+          style={{ width: `${((currentIndex + 1) / cardCount) * 100}%` }}
         />
       </div>
 

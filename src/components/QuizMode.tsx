@@ -5,7 +5,12 @@ import { generateBatchDistractors } from '../services/aiService';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const shuffleArray = <T,>(array: T[]): T[] => {
-  return [...array].sort(() => Math.random() - 0.5);
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 };
 
 interface QuizModeProps {
@@ -22,7 +27,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
   const [questionOptions, setQuestionOptions] = useState<Record<string, string[]>>({});
 
   const shuffledCards = useMemo(() => {
-    return [...deck.cards].sort(() => Math.random() - 0.5);
+    return shuffleArray(deck.cards);
   }, [deck.cards]);
 
   const currentCard = shuffledCards[currentIndex];
@@ -30,13 +35,19 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
 
   // Load ALL distractors once on mount and pre-generate all options
   useEffect(() => {
+    let isCancelled = false;
+
     const loadAllOptions = async () => {
       if (deck.cards.length === 0) {
-        setIsLoading(false);
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
         return;
       }
 
-      setIsLoading(true);
+      if (!isCancelled) {
+        setIsLoading(true);
+      }
 
       try {
         // Single API call to generate distractors for ALL cards
@@ -61,7 +72,9 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
           }
         }
 
-        setQuestionOptions(allOptions);
+        if (!isCancelled) {
+          setQuestionOptions(allOptions);
+        }
       } catch (error) {
         console.error('Error loading distractors:', error);
 
@@ -75,21 +88,44 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
             .map(c => c.back);
           allOptions[card.id] = shuffleArray([...fallbackDistractors, card.back]);
         }
-        setQuestionOptions(allOptions);
+        if (!isCancelled) {
+          setQuestionOptions(allOptions);
+        }
       } finally {
-        setIsLoading(false);
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
-    loadAllOptions();
+    void loadAllOptions();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [deck.cards]);
 
   const options = questionOptions[currentCard?.id] || [];
 
   const handleAnswer = (answer: string) => {
+    if (!currentCard) return;
+
     setSelectedAnswer(answer);
     const isCorrect = answer === currentCard.back;
-    setAnswers([...answers, { cardId: currentCard.id, isCorrect, selectedAnswer: answer }]);
+
+    const optionsSnapshot = Array.from(
+      new Set([...options, answer, currentCard.back])
+    );
+
+    setAnswers((prevAnswers) => [
+      ...prevAnswers,
+      {
+        cardId: currentCard.id,
+        isCorrect,
+        selectedAnswer: answer,
+        optionsSnapshot,
+      },
+    ]);
 
     if (isLast) {
       setTimeout(() => {
@@ -97,7 +133,7 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
       }, 1500);
     } else {
       setTimeout(() => {
-        setCurrentIndex(currentIndex + 1);
+        setCurrentIndex(prev => prev + 1);
         setSelectedAnswer(null);
       }, 1500);
     }
@@ -140,8 +176,16 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
         <div className="space-y-6">
           <h3 className="text-2xl font-heading font-bold text-neo-charcoal px-2 mb-6">Review Answers</h3>
           {answers.map((answer, index) => {
-            const card = shuffledCards[index];
-            const options = questionOptions[card.id] || [];
+            const card = shuffledCards.find(c => c.id === answer.cardId);
+            if (!card) return null;
+
+            const options = Array.from(
+              new Set([
+                ...answer.optionsSnapshot,
+                answer.selectedAnswer,
+                card.back,
+              ])
+            );
 
             return (
               <div

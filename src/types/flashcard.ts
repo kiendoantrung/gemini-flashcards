@@ -15,4 +15,5 @@ export interface QuizAnswer {
   cardId: string;
   isCorrect: boolean;
   selectedAnswer: string;
+  optionsSnapshot: string[];
 }

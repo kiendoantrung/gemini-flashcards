@@ -1,10 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { Deck } from '../types/flashcard';
 
-interface UserDeck extends Deck {
-  user_id: string;
-  created_at: string;
-}
 
 export async function saveDeck(deck: Deck, userId: string): Promise<string> {
   const { data, error } = await supabase
@@ -44,7 +40,7 @@ export async function getUserDecks(userId: string): Promise<Deck[]> {
 }
 
 export async function updateDeck(deckId: string, updates: Partial<Deck>, userId: string) {
-  console.log('Updating deck in Supabase:', { deckId, updates, userId });
+
 
   if (!updates.title || !updates.description || !updates.cards) {
     throw new Error('Missing required fields');
@@ -56,7 +52,7 @@ export async function updateDeck(deckId: string, updates: Partial<Deck>, userId:
     cards: updates.cards
   };
 
-  console.log('Update data being sent:', updateData);
+
 
   const { data, error } = await supabase
     .from('decks')

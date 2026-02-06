@@ -83,36 +83,28 @@ export function getCurrentUser() {
 }
 
 export async function updateProfile(updates: { name?: string; avatar_url?: string }) {
-  try {
-    const { data: { user }, error } = await supabase.auth.updateUser({
-      data: updates
-    });
+  const { data: { user }, error } = await supabase.auth.updateUser({
+    data: updates
+  });
 
-    if (error) throw error;
+  if (error) throw error;
 
-    // Also update the users table
-    const { error: profileError } = await supabase
-      .from('users')
-      .update(updates)
-      .eq('id', user?.id);
+  // Also update the users table
+  const { error: profileError } = await supabase
+    .from('users')
+    .update(updates)
+    .eq('id', user?.id);
 
-    if (profileError) throw profileError;
+  if (profileError) throw profileError;
 
-    return { user };
-  } catch (error) {
-    throw error;
-  }
+  return { user };
 }
 
 export async function updatePassword(password: string) {
-  try {
-    const { data, error } = await supabase.auth.updateUser({
-      password: password
-    });
+  const { data, error } = await supabase.auth.updateUser({
+    password: password
+  });
 
-    if (error) throw error;
-    return { data };
-  } catch (error) {
-    throw error;
-  }
+  if (error) throw error;
+  return { data };
 } 

@@ -1,11 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { signup } from '../services/authService';
 import { GraduationCap } from 'lucide-react';
 import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
+import { signupFormSchema, validateField, emailSchema, passwordSchema, nameSchema } from '../utils/validation';
 
 interface SignupProps {
   onSignup: () => void;
-  onError: (error: any) => void;
+  onError: (error: Error | string) => void;
   onToggleForm: () => void;
 }
 
@@ -14,12 +15,21 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string; password?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isLinkExpired, setIsLinkExpired] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [isCaptchaReady, setIsCaptchaReady] = useState(false);
   const turnstileRef = useRef<TurnstileInstance>(null);
+
+  // Validate individual field on blur
+  const handleBlur = useCallback((field: 'name' | 'email' | 'password') => {
+    const value = field === 'name' ? name : field === 'email' ? email : password;
+    const schema = field === 'name' ? nameSchema : field === 'email' ? emailSchema : passwordSchema;
+    const result = validateField(schema, value);
+    setFieldErrors(prev => ({ ...prev, [field]: result.error }));
+  }, [name, email, password]);
 
   React.useEffect(() => {
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -35,25 +45,39 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
   }, []);
 
   React.useEffect(() => {
-    if (countdown === null || countdown === 0) return;
+    if (countdown === null || countdown <= 0) return;
 
-    const timer = setInterval(() => {
-      setCountdown(prev => prev !== null ? prev - 1 : null);
+    const timer = setTimeout(() => {
+      setCountdown(prev => (prev !== null && prev > 0 ? prev - 1 : null));
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => clearTimeout(timer);
   }, [countdown]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    // Validate entire form
+    const validationResult = signupFormSchema.safeParse({ name, email, password });
+    if (!validationResult.success) {
+      const errors = validationResult.error.flatten().fieldErrors;
+      setFieldErrors({
+        name: errors.name?.[0],
+        email: errors.email?.[0],
+        password: errors.password?.[0],
+      });
+      setError('Please fix the errors above');
+      return;
+    }
+
     if (!captchaToken) {
       setError('Please complete the CAPTCHA verification');
       return;
     }
-    
+
     setIsLoading(true);
     setError(null);
+    setFieldErrors({});
 
     try {
       const { data } = await signup(email, password, name, captchaToken);
@@ -86,7 +110,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
       setError('Please complete the CAPTCHA verification');
       return;
     }
-    
+
     setError(null);
     setIsLinkExpired(false);
     setCountdown(54);
@@ -122,7 +146,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
             <GraduationCap className="w-8 h-8 text-white" />
           </div>
         </div>
-        
+
         <div className="text-center">
           <h2 className="text-3xl font-heading font-extrabold text-neo-charcoal mb-2">Create Account</h2>
           <p className="text-neo-gray">Start your learning journey today</p>
@@ -135,10 +159,14 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-3 bg-neo-cream border-2 border-neo-border rounded-neo-md focus:ring-2 focus:ring-neo-green focus:border-neo-green transition-all text-neo-charcoal font-medium"
+              onBlur={() => handleBlur('name')}
+              className={`w-full px-4 py-3 bg-neo-cream border-2 rounded-neo-md focus:ring-2 focus:ring-neo-green focus:border-neo-green transition-all text-neo-charcoal font-medium ${fieldErrors.name ? 'border-red-300' : 'border-neo-border'}`}
               placeholder="Enter your name"
               required
             />
+            {fieldErrors.name && (
+              <p className="mt-1 text-sm text-red-600 font-medium">{fieldErrors.name}</p>
+            )}
           </div>
 
           <div>
@@ -147,10 +175,14 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-neo-cream border-2 border-neo-border rounded-neo-md focus:ring-2 focus:ring-neo-green focus:border-neo-green transition-all text-neo-charcoal font-medium"
+              onBlur={() => handleBlur('email')}
+              className={`w-full px-4 py-3 bg-neo-cream border-2 rounded-neo-md focus:ring-2 focus:ring-neo-green focus:border-neo-green transition-all text-neo-charcoal font-medium ${fieldErrors.email ? 'border-red-300' : 'border-neo-border'}`}
               placeholder="Enter your email"
               required
             />
+            {fieldErrors.email && (
+              <p className="mt-1 text-sm text-red-600 font-medium">{fieldErrors.email}</p>
+            )}
           </div>
 
           <div>
@@ -159,10 +191,14 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-neo-cream border-2 border-neo-border rounded-neo-md focus:ring-2 focus:ring-neo-green focus:border-neo-green transition-all text-neo-charcoal font-medium"
-              placeholder="Create a password"
+              onBlur={() => handleBlur('password')}
+              className={`w-full px-4 py-3 bg-neo-cream border-2 rounded-neo-md focus:ring-2 focus:ring-neo-green focus:border-neo-green transition-all text-neo-charcoal font-medium ${fieldErrors.password ? 'border-red-300' : 'border-neo-border'}`}
+              placeholder="Create a password (min 8 chars, uppercase, lowercase, number)"
               required
             />
+            {fieldErrors.password && (
+              <p className="mt-1 text-sm text-red-600 font-medium">{fieldErrors.password}</p>
+            )}
           </div>
 
           {error && (
