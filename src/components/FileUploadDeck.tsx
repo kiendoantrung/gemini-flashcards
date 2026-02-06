@@ -4,7 +4,7 @@ import type { Deck } from '../types/flashcard';
 import { FileText, Upload, FileSpreadsheet, Loader2, AlertCircle } from 'lucide-react';
 
 interface FileUploadDeckProps {
-  onDeckCreated: (deck: Deck) => void;
+  onDeckCreated: (deck: Deck) => Promise<void>;
 }
 
 export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
@@ -51,7 +51,7 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
           throw new Error('No flashcards were generated from the file');
         }
         
-        onDeckCreated(deck);
+        await onDeckCreated(deck);
       } else {
         // Parse the Q&A formatted text into cards
         const text = await extractTextFromFile(file);
@@ -78,7 +78,7 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
           description: `Imported from ${file.name}`,
           cards
         };
-        onDeckCreated(deck);
+        await onDeckCreated(deck);
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to process file');

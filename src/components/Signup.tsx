@@ -15,6 +15,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string; password?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -54,6 +55,12 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
     return () => clearTimeout(timer);
   }, [countdown]);
 
+  const resetCaptcha = useCallback(() => {
+    turnstileRef.current?.reset();
+    setCaptchaToken(null);
+    setIsCaptchaReady(false);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -77,29 +84,29 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
 
     setIsLoading(true);
     setError(null);
+    setSuccessMessage(null);
     setFieldErrors({});
 
     try {
       const { data } = await signup(email, password, name, captchaToken);
-      if (!data.user || !data.session) {
+      if (!data.user) {
         const errorMessage = 'Signup failed. Please try again.';
         setError(errorMessage);
         onError(errorMessage);
-        // Reset captcha on error
-        turnstileRef.current?.reset();
-        setCaptchaToken(null);
-        setIsCaptchaReady(false);
-      } else {
+        resetCaptcha();
+      } else if (data.session) {
         onSignup();
+      } else {
+        setSuccessMessage('Account created. Please check your email to verify your account before signing in.');
+        setIsLinkExpired(false);
+        setCountdown(null);
+        resetCaptcha();
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Signup failed. Please try again.';
       setError(errorMessage);
       onError(errorMessage);
-      // Reset captcha on error
-      turnstileRef.current?.reset();
-      setCaptchaToken(null);
-      setIsCaptchaReady(false);
+      resetCaptcha();
     } finally {
       setIsLoading(false);
     }
@@ -112,28 +119,28 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
     }
 
     setError(null);
+    setSuccessMessage(null);
     setIsLinkExpired(false);
     setCountdown(54);
 
     try {
       const { data } = await signup(email, password, name, captchaToken);
-      if (!data.user || !data.session) {
+      if (!data.user) {
         const errorMessage = 'Signup failed. Please try again.';
         setError(errorMessage);
         onError(errorMessage);
-        turnstileRef.current?.reset();
-        setCaptchaToken(null);
-        setIsCaptchaReady(false);
-      } else {
+        resetCaptcha();
+      } else if (data.session) {
         onSignup();
+      } else {
+        setSuccessMessage('Verification email sent. Please check your inbox.');
+        resetCaptcha();
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Signup failed. Please try again.';
       setError(errorMessage);
       onError(errorMessage);
-      turnstileRef.current?.reset();
-      setCaptchaToken(null);
-      setIsCaptchaReady(false);
+      resetCaptcha();
     }
   };
 
@@ -206,6 +213,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
               {error}
               {isLinkExpired && countdown === 0 && (
                 <button
+                  type="button"
                   onClick={handleResendVerification}
                   className="ml-2 text-neo-green hover:text-neo-charcoal font-bold"
                 >
@@ -217,6 +225,12 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
                   Please wait {countdown} seconds before requesting a new link.
                 </div>
               )}
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="text-emerald-700 text-sm bg-emerald-50 p-4 rounded-neo-md border-2 border-emerald-300 font-medium">
+              {successMessage}
             </div>
           )}
 

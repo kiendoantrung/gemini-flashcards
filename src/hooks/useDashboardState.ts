@@ -112,14 +112,18 @@ export function useDashboardState(
       const {
         data: { user: currentUser },
       } = await getCurrentUser();
-      if (!currentUser) return;
+      if (!currentUser) {
+        throw new Error('User not authenticated');
+      }
 
       const deckId = await saveDeck(newDeck, currentUser.id);
       setDecks((prevDecks) => [{ ...newDeck, id: deckId }, ...prevDecks]);
     } catch (error) {
       console.error('Failed to save deck:', error);
+      showToast('Failed to save deck. Please try again.', 'error');
+      throw error;
     }
-  }, []);
+  }, [showToast]);
 
   const updateDeckById = useCallback(
     async (deckId: string, updates: Partial<Deck>) => {
@@ -149,6 +153,7 @@ export function useDashboardState(
         showToast('Deck updated successfully!', 'success');
       } catch (error) {
         console.error('Failed to update deck:', error);
+        showToast('Failed to update deck. Please try again.', 'error');
         throw error;
       }
     },

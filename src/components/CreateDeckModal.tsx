@@ -16,8 +16,8 @@ export function CreateDeckModal({ isOpen, onClose, onDeckCreated }: CreateDeckMo
 
   if (!isOpen) return null;
 
-  const handleDeckCreated = (deck: Deck) => {
-    onDeckCreated(deck);
+  const handleDeckCreated = async (deck: Deck) => {
+    await onDeckCreated(deck);
     onClose();
   };
 

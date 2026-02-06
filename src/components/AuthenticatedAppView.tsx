@@ -73,9 +73,13 @@ export function AuthenticatedAppView({
           <Suspense fallback={<LoadingSpinner />}>
             <EditDeckPage
               deck={editingDeck}
-              onSave={(updates) => {
-                void onDeckUpdate(editingDeck.id, updates);
-                onStopEditing();
+              onSave={async (updates) => {
+                try {
+                  await onDeckUpdate(editingDeck.id, updates);
+                  onStopEditing();
+                } catch {
+                  // Keep editor open so user can retry after save failure.
+                }
               }}
               onCancel={onStopEditing}
             />

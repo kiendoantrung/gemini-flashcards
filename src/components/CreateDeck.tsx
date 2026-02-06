@@ -5,7 +5,7 @@ import type { Deck } from '../types/flashcard';
 import { createDeckFormSchema, validateField, topicSchema } from '../utils/validation';
 
 interface CreateDeckProps {
-  onDeckCreated: (deck: Deck) => void;
+  onDeckCreated: (deck: Deck) => Promise<void>;
 }
 
 export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
@@ -47,24 +47,26 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
     setFieldErrors({});
     setRetryCount(0);
 
-    const attemptGeneration = async (attempt: number): Promise<void> => {
+    const attemptGeneration = async (attempt: number): Promise<Deck> => {
       try {
-        const deck = await generateDeck(topic, numQuestions);
-        onDeckCreated(deck);
-        setTopic('');
+        return await generateDeck(topic, numQuestions);
       } catch (err) {
         if (attempt < MAX_RETRIES) {
           setRetryCount(attempt + 1);
-          await attemptGeneration(attempt + 1);
+          return await attemptGeneration(attempt + 1);
         } else {
-          const message = err instanceof Error ? err.message : 'Failed to generate deck';
-          setError(`${message}. Please try again.`);
+          throw err;
         }
       }
     };
 
     try {
-      await attemptGeneration(0);
+      const deck = await attemptGeneration(0);
+      await onDeckCreated(deck);
+      setTopic('');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to generate deck';
+      setError(`${message}. Please try again.`);
     } finally {
       setIsLoading(false);
     }
