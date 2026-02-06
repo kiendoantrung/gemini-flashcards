@@ -82,18 +82,26 @@ export function getCurrentUser() {
   return supabase.auth.getUser();
 }
 
-export async function updateProfile(updates: { name?: string; avatar_url?: string }) {
+export async function updateProfile(updates: { name?: string; avatar_url?: string | null }) {
   const { data: { user }, error } = await supabase.auth.updateUser({
     data: updates
   });
 
   if (error) throw error;
+  if (!user) throw new Error('User not found after profile update');
 
-  // Also update the users table
+  // Keep profile table in sync with auth metadata
   const { error: profileError } = await supabase
-    .from('users')
-    .update(updates)
-    .eq('id', user?.id);
+    .from('profiles')
+    .upsert(
+      {
+        id: user.id,
+        ...updates
+      },
+      {
+        onConflict: 'id'
+      }
+    );
 
   if (profileError) throw profileError;
 
