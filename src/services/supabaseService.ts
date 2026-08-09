@@ -18,7 +18,7 @@ export async function saveDeck(deck: Deck, userId: string): Promise<string> {
     throw error;
   }
 
-  return data.id;
+  return String(data.id);
 }
 
 export async function getUserDecks(userId: string): Promise<Deck[]> {

@@ -156,9 +156,29 @@ export async function extractTextFromFile(file: File): Promise<string> {
         throw new Error("JSON must be an array of question/answer pairs");
       }
       // Convert JSON to readable text format
-      return json
-        .map((item) => `Q: ${item.question}\nA: ${item.answer}`)
-        .join("\n\n");
+      const pairs = json.map((item: unknown) => {
+        if (typeof item !== 'object' || item === null) {
+          throw new Error('Each JSON item must be an object');
+        }
+
+        const candidate = item as { question?: unknown; answer?: unknown };
+        if (
+          typeof candidate.question !== 'string' ||
+          typeof candidate.answer !== 'string' ||
+          !candidate.question.trim() ||
+          !candidate.answer.trim()
+        ) {
+          throw new Error('Each JSON item must contain non-empty question and answer strings');
+        }
+
+        return `Q: ${candidate.question.trim()}\nA: ${candidate.answer.trim()}`;
+      });
+
+      if (pairs.length === 0) {
+        throw new Error('JSON file does not contain any question-answer pairs');
+      }
+
+      return pairs.join("\n\n");
     } catch {
       throw new Error("Invalid JSON file format");
     }
