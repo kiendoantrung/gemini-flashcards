@@ -40,19 +40,33 @@ export async function getUserDecks(userId: string): Promise<Deck[]> {
 }
 
 export async function updateDeck(deckId: string, updates: Partial<Deck>, userId: string) {
+  const updateData: {
+    title?: string;
+    description?: string;
+    cards?: Deck['cards'];
+  } = {};
 
-
-  if (!updates.title || !updates.description || !updates.cards) {
-    throw new Error('Missing required fields');
+  if (updates.title !== undefined) {
+    if (!updates.title.trim()) {
+      throw new Error('Title cannot be empty');
+    }
+    updateData.title = updates.title;
   }
 
-  const updateData = {
-    title: updates.title,
-    description: updates.description,
-    cards: updates.cards
-  };
+  if (updates.description !== undefined) {
+    if (!updates.description.trim()) {
+      throw new Error('Description cannot be empty');
+    }
+    updateData.description = updates.description;
+  }
 
+  if (updates.cards !== undefined) {
+    updateData.cards = updates.cards;
+  }
 
+  if (Object.keys(updateData).length === 0) {
+    throw new Error('At least one deck field is required');
+  }
 
   const { data, error } = await supabase
     .from('decks')
@@ -85,4 +99,4 @@ export async function deleteDeck(deckId: string, userId: string) {
     console.error('Error deleting deck:', error);
     throw error;
   }
-} 
+}
