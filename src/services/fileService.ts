@@ -4,8 +4,48 @@ import { withRetry } from "../utils/retry";
 
 
 export async function extractTextFromFile(file: File): Promise<string> {
+  const fileExtension = file.name.split('.').pop()?.toLowerCase();
+
   if (file.type === "application/pdf") {
     return "";
+  }
+
+  if (
+    file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    file.type === "application/msword" ||
+    fileExtension === "docx" ||
+    fileExtension === "doc"
+  ) {
+    try {
+      // Ream parses both OOXML .docx and legacy binary .doc in the browser.
+      // Keep it lazy because most uploads are plain text files.
+      const { Ream } = await import('reamkit');
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const document = Ream.parse(bytes);
+      const htmlBytes = await document.convert('html');
+      const html = new TextDecoder().decode(htmlBytes);
+      const htmlWithLineBreaks = html.replace(
+        /<\/(p|div|li|h[1-6]|tr|br)>/gi,
+        '\n'
+      );
+      const parsedHtml = new DOMParser().parseFromString(htmlWithLineBreaks, 'text/html');
+      const text = parsedHtml.body.textContent
+        ?.replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim() ?? '';
+
+      if (!text) {
+        throw new Error('The Word document does not contain readable text');
+      }
+
+      return text;
+    } catch (error) {
+      console.error('Word document parsing error:', error);
+      throw new Error(
+        'Invalid or unsupported Word document. Please upload a readable DOC or DOCX file.'
+      );
+    }
   }
 
   if (

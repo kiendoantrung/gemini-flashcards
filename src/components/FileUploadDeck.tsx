@@ -118,7 +118,7 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
               Choose File
               <input
                 type="file"
-                accept=".txt,.pdf,.doc,.docx"
+                accept=".txt,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 onChange={(e) => handleFileUpload(e, 'text')}
                 className="sr-only"
                 disabled={isLoading}
@@ -130,7 +130,7 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
           </div>
           <p className="mt-2 text-xs text-neo-gray flex items-center font-medium">
             <Upload className="w-3 h-3 mr-1 text-neo-green" />
-            Upload PDF, DOC, or TXT files
+            Upload PDF, DOC, DOCX, or TXT files
           </p>
         </div>
 
