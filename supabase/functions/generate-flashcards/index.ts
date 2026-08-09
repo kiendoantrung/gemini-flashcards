@@ -15,6 +15,7 @@ const MODEL_NAME = "gemini-2.5-flash";
 const DEFAULT_NUM_QUESTIONS = 10;
 const MAX_NUM_QUESTIONS = 50;
 const MIN_NUM_QUESTIONS = 1;
+const MAX_PDF_SIZE_BYTES = 50 * 1024 * 1024;
 
 // Retry configuration
 const MAX_RETRIES = 3;
@@ -164,6 +165,19 @@ function errorResponse(error: unknown): Response {
 function validateNumQuestions(numQuestions: number): void {
   if (numQuestions < MIN_NUM_QUESTIONS || numQuestions > MAX_NUM_QUESTIONS) {
     throw new Error(`numQuestions must be between ${MIN_NUM_QUESTIONS} and ${MAX_NUM_QUESTIONS}`);
+  }
+}
+
+/**
+ * Validates the decoded PDF size. Gemini accepts PDFs up to 50 MB; validating
+ * here also protects the Edge Function when it is called outside the client.
+ */
+function validatePdfBase64Size(pdfBase64: string): void {
+  const padding = pdfBase64.endsWith('==') ? 2 : pdfBase64.endsWith('=') ? 1 : 0;
+  const decodedSize = Math.floor((pdfBase64.length * 3) / 4) - padding;
+
+  if (decodedSize > MAX_PDF_SIZE_BYTES) {
+    throw new Error('PDF files must be 50 MB or smaller');
   }
 }
 
@@ -566,6 +580,7 @@ serve(async (req: Request) => {
         if (!pdfBase64) {
           throw new Error("PDF base64 data is required for generateFromPDF action");
         }
+        validatePdfBase64Size(pdfBase64);
         return await handleGenerateFromPDF(apiKeys, pdfBase64, numQuestions);
       }
 

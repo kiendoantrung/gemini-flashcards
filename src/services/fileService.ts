@@ -2,6 +2,7 @@ import { supabase } from "../lib/supabase";
 import type { Flashcard } from "../types/flashcard";
 import { withRetry } from "../utils/retry";
 
+export const MAX_GEMINI_PDF_SIZE_BYTES = 50 * 1024 * 1024;
 
 export async function extractTextFromFile(file: File): Promise<string> {
   const fileExtension = file.name.split('.').pop()?.toLowerCase();
@@ -159,15 +160,24 @@ export async function generateQAFromText(
   }
 }
 
-// Helper function to convert File to base64
+// Helper function to convert File to base64 without repeatedly reallocating a
+// growing string for every byte.
 async function fileToBase64(file: File): Promise<string> {
+  if (file.size > MAX_GEMINI_PDF_SIZE_BYTES) {
+    throw new Error('PDF files must be 50 MB or smaller');
+  }
+
   const arrayBuffer = await file.arrayBuffer();
   const uint8Array = new Uint8Array(arrayBuffer);
-  let binary = '';
-  for (let i = 0; i < uint8Array.length; i++) {
-    binary += String.fromCharCode(uint8Array[i]);
+  const chunkSize = 0x8000;
+  const chunks: string[] = [];
+
+  for (let offset = 0; offset < uint8Array.length; offset += chunkSize) {
+    const chunk = uint8Array.subarray(offset, offset + chunkSize);
+    chunks.push(String.fromCharCode(...chunk));
   }
-  return btoa(binary);
+
+  return btoa(chunks.join(''));
 }
 
 // Generate flashcards directly from PDF using Edge Function
@@ -175,6 +185,10 @@ export async function generateQAFromPDF(
   file: File,
   numQuestions: number = 10
 ): Promise<Array<Omit<Flashcard, "id">>> {
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    throw new Error('Please upload a PDF file');
+  }
+
   const base64Data = await fileToBase64(file);
 
   try {
