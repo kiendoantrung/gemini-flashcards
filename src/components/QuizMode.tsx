@@ -105,6 +105,27 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
     };
   }, [deck.cards]);
 
+  if (shuffledCards.length === 0) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-12 text-center">
+        <div className="bg-white rounded-neo-xl border-2 border-neo-border shadow-neo-lg p-10">
+          <h2 className="text-3xl font-heading font-extrabold text-neo-charcoal mb-3">
+            This deck has no cards yet
+          </h2>
+          <p className="text-neo-gray mb-8">
+            Add at least one flashcard before starting a quiz.
+          </p>
+          <button
+            onClick={onExit}
+            className="inline-flex items-center gap-2 px-8 py-3 rounded-full bg-neo-green text-white font-bold border-2 border-neo-border shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all"
+          >
+            Back to Decks
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const options = questionOptions[currentCard?.id] || [];
 
   const handleAnswer = (answer: string) => {
