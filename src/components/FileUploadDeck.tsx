@@ -57,13 +57,11 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
         const text = await extractTextFromFile(file);
         const cards = text.split('\n\n')
           .map(pair => {
-            const lines = pair.split('\n');
-            const question = lines[0] || '';
-            const answer = lines[1] || '';
+            const match = pair.match(/^Q:\s*([\s\S]*?)\nA:\s*([\s\S]*)$/);
             return {
               id: crypto.randomUUID(),
-              front: question.replace('Q: ', '').trim(),
-              back: answer.replace('A: ', '').trim()
+              front: match?.[1]?.trim() || '',
+              back: match?.[2]?.trim() || ''
             };
           })
           .filter(card => card.front && card.back); // Filter out empty cards

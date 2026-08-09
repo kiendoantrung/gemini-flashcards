@@ -4,6 +4,63 @@ import { withRetry } from "../utils/retry";
 
 export const MAX_GEMINI_PDF_SIZE_BYTES = 50 * 1024 * 1024;
 
+function parseCsvRows(csv: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < csv.length; index += 1) {
+    const character = csv[index];
+
+    if (inQuotes) {
+      if (character === '"') {
+        if (csv[index + 1] === '"') {
+          field += '"';
+          index += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += character;
+      }
+      continue;
+    }
+
+    if (character === '"' && field.length === 0) {
+      inQuotes = true;
+    } else if (character === ',') {
+      row.push(field.trim());
+      field = '';
+    } else if (character === '\n' || character === '\r') {
+      if (character === '\r' && csv[index + 1] === '\n') {
+        index += 1;
+      }
+      row.push(field.trim());
+      if (row.some((value) => value.length > 0)) {
+        rows.push(row);
+      }
+      row = [];
+      field = '';
+    } else {
+      field += character;
+    }
+  }
+
+  if (inQuotes) {
+    throw new Error('CSV contains an unterminated quoted field');
+  }
+
+  if (field.length > 0 || row.length > 0) {
+    row.push(field.trim());
+    if (row.some((value) => value.length > 0)) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
+}
+
 export async function extractTextFromFile(file: File): Promise<string> {
   const fileExtension = file.name.split('.').pop()?.toLowerCase();
 
@@ -109,19 +166,19 @@ export async function extractTextFromFile(file: File): Promise<string> {
 
   if (file.type === "text/csv") {
     const text = await file.text();
-    // Convert CSV to readable text format
-    const lines = text
-      .split("\n")
-      .filter((line) => line.trim()) // Remove empty lines
-      .map((line) => {
-        const [question, answer] = line.split(",").map((str) => str.trim());
-        if (!question || !answer) {
-          throw new Error("Each CSV line must have a question and answer");
-        }
-        return `Q: ${question}\nA: ${answer}`;
-      })
-      .join("\n\n");
-    return lines;
+    const rows = parseCsvRows(text.replace(/^\uFEFF/, ''));
+    const pairs = rows.map(([question, answer, ...extraColumns]) => {
+      if (!question || !answer || extraColumns.length > 0) {
+        throw new Error('Each CSV row must contain exactly two non-empty columns: question and answer');
+      }
+      return `Q: ${question}\nA: ${answer}`;
+    });
+
+    if (pairs.length === 0) {
+      throw new Error('CSV file does not contain any question-answer pairs');
+    }
+
+    return pairs.join("\n\n");
   }
 
   // For other text files (including .txt)
