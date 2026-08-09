@@ -11,7 +11,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const MODEL_NAME = "gemini-2.5-flash";
+const MODEL_NAME = "gemini-3.5-flash-lite";
 const DEFAULT_NUM_QUESTIONS = 10;
 const MAX_NUM_QUESTIONS = 50;
 const MIN_NUM_QUESTIONS = 1;
@@ -46,43 +46,44 @@ function getApiKeys(): string[] {
   return keys;
 }
 
-// Track failed keys to avoid using them again in the same request
-let failedKeyIndices: Set<number> = new Set();
-let currentKeyIndex = 0;
+interface ApiKeyState {
+  failedKeyIndices: Set<number>;
+  currentKeyIndex: number;
+}
+
+function createApiKeyState(): ApiKeyState {
+  return {
+    failedKeyIndices: new Set<number>(),
+    currentKeyIndex: -1,
+  };
+}
 
 /**
  * Get the next available API key (round-robin with failover)
  */
-function getNextApiKey(keys: string[]): { key: string; index: number } | null {
-  const availableKeys = keys.filter((_, idx) => !failedKeyIndices.has(idx));
+function getNextApiKey(
+  keys: string[],
+  state: ApiKeyState
+): { key: string; index: number } | null {
+  const availableKeys = keys.filter((_, idx) => !state.failedKeyIndices.has(idx));
   
   if (availableKeys.length === 0) {
     return null;
   }
   
   // Round-robin selection among available keys
-  currentKeyIndex = (currentKeyIndex + 1) % keys.length;
-  
+  state.currentKeyIndex = (state.currentKeyIndex + 1) % keys.length;
+
   // Skip failed keys
-  while (failedKeyIndices.has(currentKeyIndex)) {
-    currentKeyIndex = (currentKeyIndex + 1) % keys.length;
+  while (state.failedKeyIndices.has(state.currentKeyIndex)) {
+    state.currentKeyIndex = (state.currentKeyIndex + 1) % keys.length;
   }
-  
-  return { key: keys[currentKeyIndex], index: currentKeyIndex };
+
+  return { key: keys[state.currentKeyIndex], index: state.currentKeyIndex };
 }
 
-/**
- * Mark a key as failed for this request cycle
- */
-function markKeyAsFailed(index: number): void {
-  failedKeyIndices.add(index);
-}
-
-/**
- * Reset failed keys at the start of a new request
- */
-function resetFailedKeys(): void {
-  failedKeyIndices = new Set();
+function markKeyAsFailed(state: ApiKeyState, index: number): void {
+  state.failedKeyIndices.add(index);
 }
 
 // ============================================================================
@@ -268,10 +269,11 @@ async function generateContent(
     : prompt;
 
   let lastError: Error | null = null;
+  const keyState = createApiKeyState();
 
   // Try each available API key
   while (true) {
-    const keyInfo = getNextApiKey(apiKeys);
+    const keyInfo = getNextApiKey(apiKeys, keyState);
     
     if (!keyInfo) {
       // All keys have failed
@@ -304,13 +306,13 @@ async function generateContent(
         
         if (shouldSwitchKey) {
           console.warn(`API key ${keyInfo.index + 1} hit rate limit, switching to next key...`);
-          markKeyAsFailed(keyInfo.index);
+          markKeyAsFailed(keyState, keyInfo.index);
           break; // Try next key
         }
         
         if (!isRetryableError(error) || attempt === MAX_RETRIES) {
           // For non-retryable errors or max retries reached, mark key as failed
-          markKeyAsFailed(keyInfo.index);
+          markKeyAsFailed(keyState, keyInfo.index);
           break;
         }
 
@@ -542,9 +544,6 @@ serve(async (req: Request) => {
     if (apiKeys.length === 0) {
       throw new Error("No GOOGLE_AI_KEY environment variable is set. Please set GOOGLE_AI_KEY (and optionally GOOGLE_AI_KEY_2, GOOGLE_AI_KEY_3, etc.)");
     }
-
-    // Reset failed keys for this request
-    resetFailedKeys();
 
     console.log(`Using ${apiKeys.length} API key(s) for load balancing`);
 
