@@ -1,21 +1,36 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { GoogleGenAI } from "https://esm.sh/@google/genai@1.11.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
 
 // ============================================================================
 // Constants
 // ============================================================================
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
 
 const MODEL_NAME = "gemini-3.5-flash-lite";
 const DEFAULT_NUM_QUESTIONS = 10;
 const MAX_NUM_QUESTIONS = 50;
 const MIN_NUM_QUESTIONS = 1;
 const MAX_PDF_SIZE_BYTES = 50 * 1024 * 1024;
+const MAX_PDF_BASE64_LENGTH = Math.ceil(MAX_PDF_SIZE_BYTES / 3) * 4;
+const MAX_REQUEST_BODY_BYTES = MAX_PDF_BASE64_LENGTH + 64 * 1024;
+const MAX_TOPIC_BYTES = 1_000;
+const MAX_TEXT_BYTES = 500_000;
+const MAX_CARD_COUNT = 50;
+const MAX_CARD_ID_BYTES = 128;
+const MAX_CARD_TEXT_BYTES = 5_000;
+const MAX_DECK_TITLE_BYTES = 500;
+const MAX_DECK_DESCRIPTION_BYTES = 2_000;
+
+const configuredOrigins = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+if (configuredOrigins.length === 0) {
+  console.warn(
+    "ALLOWED_ORIGINS is not configured; browser requests will not receive CORS access",
+  );
+}
 
 // Retry configuration
 const MAX_RETRIES = 3;
@@ -90,24 +105,18 @@ function markKeyAsFailed(state: ApiKeyState, index: number): void {
 // Types
 // ============================================================================
 
-interface FlashcardRequest {
-  action: "generateDeck" | "generateDistractors" | "generateFromText" | "generateFromPDF";
-  topic?: string;
-  numQuestions?: number;
-  cards?: Array<{ id: string; front: string; back: string }>;
-  text?: string;
-  pdfBase64?: string;
-}
+type ValidatedFlashcardRequest =
+  | { action: "generateDeck"; topic: string; numQuestions: number }
+  | {
+      action: "generateDistractors";
+      cards: Array<{ id: string; front: string; back: string }>;
+    }
+  | { action: "generateFromText"; text: string; numQuestions: number }
+  | { action: "generateFromPDF"; pdfBase64: string; numQuestions: number };
 
 interface FlashcardData {
   front: string;
   back: string;
-}
-
-interface DeckData {
-  title: string;
-  description: string;
-  cards: FlashcardData[];
 }
 
 // ============================================================================
@@ -141,32 +150,236 @@ const deckSchema = {
 // Helper Functions
 // ============================================================================
 
+class FunctionError extends Error {
+  readonly status: number;
+  readonly code: string;
+
+  constructor(message: string, status: number, code: string) {
+    super(message);
+    this.name = "FunctionError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requestError(message: string, status = 400): FunctionError {
+  return new FunctionError(
+    message,
+    status,
+    status === 413 ? "PAYLOAD_TOO_LARGE" : "INVALID_REQUEST",
+  );
+}
+
+function aiResponseError(message: string): FunctionError {
+  return new FunctionError(message, 502, "AI_INVALID_RESPONSE");
+}
+
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+function requireString(
+  value: unknown,
+  fieldName: string,
+  maxBytes: number,
+): string {
+  if (typeof value !== "string") {
+    throw requestError(`${fieldName} must be a string`);
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    throw requestError(`${fieldName} is required`);
+  }
+  if (byteLength(normalized) > maxBytes) {
+    throw requestError(`${fieldName} is too long`);
+  }
+
+  return normalized;
+}
+
+function requireAIString(
+  value: unknown,
+  fieldName: string,
+  maxBytes: number,
+): string {
+  if (typeof value !== "string") {
+    throw aiResponseError(`AI response field "${fieldName}" must be a string`);
+  }
+
+  const normalized = value.trim();
+  if (!normalized || byteLength(normalized) > maxBytes) {
+    throw aiResponseError(`AI response field "${fieldName}" is invalid`);
+  }
+
+  return normalized;
+}
+
+function validateNumQuestions(value: unknown): number {
+  if (value === undefined) return DEFAULT_NUM_QUESTIONS;
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < MIN_NUM_QUESTIONS ||
+    value > MAX_NUM_QUESTIONS
+  ) {
+    throw requestError(
+      `numQuestions must be an integer between ${MIN_NUM_QUESTIONS} and ${MAX_NUM_QUESTIONS}`,
+    );
+  }
+  return value;
+}
+
+function validateCards(
+  value: unknown,
+): Array<{ id: string; front: string; back: string }> {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw requestError("cards must be a non-empty array");
+  }
+  if (value.length > MAX_CARD_COUNT) {
+    throw requestError(`cards cannot contain more than ${MAX_CARD_COUNT} items`);
+  }
+
+  const ids = new Set<string>();
+  return value.map((card, index) => {
+    if (!isRecord(card)) {
+      throw requestError(`cards[${index}] must be an object`);
+    }
+
+    const id = requireString(card.id, `cards[${index}].id`, MAX_CARD_ID_BYTES);
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+      throw requestError(`cards[${index}].id contains unsupported characters`);
+    }
+    if (ids.has(id)) {
+      throw requestError(`cards contains duplicate id "${id}"`);
+    }
+    ids.add(id);
+
+    return {
+      id,
+      front: requireString(card.front, `cards[${index}].front`, MAX_CARD_TEXT_BYTES),
+      back: requireString(card.back, `cards[${index}].back`, MAX_CARD_TEXT_BYTES),
+    };
+  });
+}
+
+function validatePdfBase64(value: unknown): string {
+  if (typeof value !== "string" || !value) {
+    throw requestError("pdfBase64 is required");
+  }
+  if (
+    value.length > MAX_PDF_BASE64_LENGTH ||
+    value.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(value)
+  ) {
+    throw requestError("pdfBase64 is not valid base64 or is too large");
+  }
+
+  validatePdfBase64Size(value);
+  return value;
+}
+
+async function parseRequest(req: Request): Promise<ValidatedFlashcardRequest> {
+  const contentLength = Number(req.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+    throw requestError("Request payload is too large", 413);
+  }
+
+  const rawBody = await req.text();
+  if (byteLength(rawBody) > MAX_REQUEST_BODY_BYTES) {
+    throw requestError("Request payload is too large", 413);
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    throw requestError("Request body must be valid JSON");
+  }
+  if (!isRecord(payload)) {
+    throw requestError("Request body must be a JSON object");
+  }
+
+  switch (payload.action) {
+    case "generateDeck":
+      return {
+        action: payload.action,
+        topic: requireString(payload.topic, "topic", MAX_TOPIC_BYTES),
+        numQuestions: validateNumQuestions(payload.numQuestions),
+      };
+    case "generateDistractors":
+      return { action: payload.action, cards: validateCards(payload.cards) };
+    case "generateFromText":
+      return {
+        action: payload.action,
+        text: requireString(payload.text, "text", MAX_TEXT_BYTES),
+        numQuestions: validateNumQuestions(payload.numQuestions),
+      };
+    case "generateFromPDF":
+      return {
+        action: payload.action,
+        pdfBase64: validatePdfBase64(payload.pdfBase64),
+        numQuestions: validateNumQuestions(payload.numQuestions),
+      };
+    default:
+      throw requestError("action must be one of the supported generation actions");
+  }
+}
+
+function getCorsHeaders(req: Request): HeadersInit {
+  const origin = req.headers.get("origin");
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, x-retry-count",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
+  };
+
+  if (origin && configuredOrigins.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+
+  return headers;
+}
+
+function isAllowedOrigin(req: Request): boolean {
+  const origin = req.headers.get("origin");
+  return !origin || configuredOrigins.includes(origin);
+}
+
 /**
  * Creates a JSON response with CORS headers
  */
-function jsonResponse(data: unknown, status = 200): Response {
+function jsonResponse(data: unknown, status = 200, req?: Request): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: {
+      ...getCorsHeaders(req ?? new Request("http://localhost")),
+      "Content-Type": "application/json",
+    },
   });
 }
 
 /**
  * Creates an error response with CORS headers
  */
-function errorResponse(error: unknown): Response {
-  const message = error instanceof Error ? error.message : "Unknown error occurred";
-  console.error("Edge function error:", message);
-  return jsonResponse({ error: message }, 500);
-}
+function errorResponse(error: unknown, req: Request): Response {
+  console.error("Edge function error:", error);
 
-/**
- * Validates numQuestions parameter
- */
-function validateNumQuestions(numQuestions: number): void {
-  if (numQuestions < MIN_NUM_QUESTIONS || numQuestions > MAX_NUM_QUESTIONS) {
-    throw new Error(`numQuestions must be between ${MIN_NUM_QUESTIONS} and ${MAX_NUM_QUESTIONS}`);
+  if (error instanceof FunctionError) {
+    return jsonResponse({ error: error.message, code: error.code }, error.status, req);
   }
+
+  return jsonResponse(
+    { error: "Internal server error", code: "INTERNAL_ERROR" },
+    500,
+    req,
+  );
 }
 
 /**
@@ -178,71 +391,85 @@ function validatePdfBase64Size(pdfBase64: string): void {
   const decodedSize = Math.floor((pdfBase64.length * 3) / 4) - padding;
 
   if (decodedSize > MAX_PDF_SIZE_BYTES) {
-    throw new Error('PDF files must be 50 MB or smaller');
+    throw requestError("PDF files must be 50 MB or smaller", 413);
   }
 }
 
 /**
  * Parses AI response text as JSON with error handling
  */
-function parseAIResponse<T>(responseText: string | undefined): T {
+function parseAIResponse(responseText: string | undefined): unknown {
   if (!responseText) {
-    throw new Error("Empty response from AI model");
+    throw aiResponseError("Empty response from AI model");
   }
   try {
-    return JSON.parse(responseText) as T;
+    return JSON.parse(responseText) as unknown;
   } catch {
-    throw new Error("Failed to parse AI response as JSON");
+    throw aiResponseError("Failed to parse AI response as JSON");
   }
 }
 
 /**
  * Normalizes flashcard data from various response formats
  */
-function normalizeFlashcards(data: unknown): FlashcardData[] {
+function normalizeFlashcards(data: unknown, maxCards = MAX_NUM_QUESTIONS): FlashcardData[] {
   let cards: unknown[];
 
   if (Array.isArray(data)) {
     cards = data;
-  } else if (typeof data === "object" && data !== null) {
-    const obj = data as Record<string, unknown>;
+  } else if (isRecord(data)) {
+    const obj = data;
     if (Array.isArray(obj.cards)) {
       cards = obj.cards;
     } else if (Array.isArray(obj.flashcards)) {
       cards = obj.flashcards;
     } else {
-      throw new Error("Invalid response format: expected array of flashcards");
+      throw aiResponseError("Invalid response format: expected array of flashcards");
     }
   } else {
-    throw new Error("Invalid response format: expected array of flashcards");
+    throw aiResponseError("Invalid response format: expected array of flashcards");
   }
 
-  return cards
-    .map((card: unknown) => {
-      const c = card as Record<string, string>;
-      return {
-        front: c.front || c.question || c.q || "",
-        back: c.back || c.answer || c.a || "",
-      };
-    })
-    .filter((card) => card.front && card.back);
+  if (cards.length === 0 || cards.length > maxCards) {
+    throw aiResponseError("AI returned an invalid number of flashcards");
+  }
+
+  return cards.map((card: unknown, index) => {
+    if (!isRecord(card)) {
+      throw aiResponseError(`AI response card ${index + 1} is invalid`);
+    }
+
+    const frontValue = card.front ?? card.question ?? card.q;
+    const backValue = card.back ?? card.answer ?? card.a;
+    return {
+      front: requireAIString(frontValue, `cards[${index}].front`, MAX_CARD_TEXT_BYTES),
+      back: requireAIString(backValue, `cards[${index}].back`, MAX_CARD_TEXT_BYTES),
+    };
+  });
 }
 
-/**
- * Checks if an error is retryable (503, 429, network errors)
- */
+/** Only transient provider/network failures may be retried. */
+function getErrorStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const errorRecord = error as Record<string, unknown>;
+  const status = errorRecord.status ?? errorRecord.statusCode;
+  return typeof status === "number" ? status : null;
+}
+
 function isRetryableError(error: unknown): boolean {
+  const status = getErrorStatus(error);
+  if (status !== null) {
+    return [429, 500, 502, 503, 504].includes(status);
+  }
+
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
     return (
-      message.includes("503") ||
       message.includes("overloaded") ||
-      message.includes("unavailable") ||
-      message.includes("429") ||
-      message.includes("rate limit") ||
-      message.includes("quota") ||
+      message.includes("temporarily unavailable") ||
       message.includes("timeout") ||
-      message.includes("network")
+      message.includes("network") ||
+      message.includes("internal server error")
     );
   }
   return false;
@@ -335,15 +562,37 @@ async function generateContent(
   // Provide user-friendly error messages
   if (lastError) {
     const message = lastError.message.toLowerCase();
-    if (message.includes("overloaded") || message.includes("503") || message.includes("unavailable")) {
-      throw new Error("AI service is currently busy. Please wait a moment and try again.");
+    const status = getErrorStatus(lastError);
+    if (
+      status === 503 ||
+      status === 500 ||
+      status === 502 ||
+      status === 504 ||
+      message.includes("overloaded") ||
+      message.includes("503") ||
+      message.includes("unavailable")
+    ) {
+      throw new FunctionError(
+        "AI service is currently busy. Please wait a moment and try again.",
+        503,
+        "AI_UNAVAILABLE",
+      );
     }
-    if (message.includes("429") || message.includes("rate limit") || message.includes("quota")) {
-      throw new Error("Too many requests. Please wait a minute and try again.");
+    if (
+      status === 429 ||
+      message.includes("429") ||
+      message.includes("rate limit") ||
+      message.includes("quota")
+    ) {
+      throw new FunctionError(
+        "Too many requests. Please wait a minute and try again.",
+        429,
+        "AI_RATE_LIMITED",
+      );
     }
   }
 
-  throw lastError || new Error("Failed to generate content");
+  throw new FunctionError("Failed to generate content", 502, "AI_GENERATION_FAILED");
 }
 
 // ============================================================================
@@ -356,7 +605,8 @@ async function generateContent(
 async function handleGenerateDeck(
   apiKeys: string[],
   topic: string,
-  numQuestions: number
+  numQuestions: number,
+  req: Request,
 ): Promise<Response> {
   const prompt = `Create a set of ${numQuestions} flashcards about "${topic}".
 
@@ -367,40 +617,40 @@ RULES:
 - Return a JSON object with: title (string), description (string), and cards (array of objects with front and back properties)`;
 
   const responseText = await generateContent(apiKeys, prompt, deckSchema as Record<string, unknown>);
-  let parsedData = parseAIResponse<DeckData | FlashcardData[]>(responseText);
+  let parsedData = parseAIResponse(responseText);
 
   // Handle array response format
   if (Array.isArray(parsedData)) {
-    if (parsedData.length > 0 && "front" in parsedData[0] && "back" in parsedData[0]) {
-      parsedData = {
-        title: topic,
-        description: `Flashcards about ${topic}`,
-        cards: parsedData,
-      };
-    } else {
-      throw new Error("Invalid response format from AI model");
-    }
+    parsedData = {
+      title: topic,
+      description: `Flashcards about ${topic}`,
+      cards: parsedData,
+    };
   }
 
   // Validate the response structure
-  const data = parsedData as DeckData;
-  if (!data.title || !data.cards || !Array.isArray(data.cards)) {
-    throw new Error("Invalid deck structure in AI response");
+  if (!isRecord(parsedData) || !Array.isArray(parsedData.cards)) {
+    throw aiResponseError("Invalid deck structure in AI response");
   }
+  const title = requireAIString(parsedData.title, "title", MAX_DECK_TITLE_BYTES);
+  const description = parsedData.description === undefined
+    ? `Flashcards about ${topic}`
+    : requireAIString(parsedData.description, "description", MAX_DECK_DESCRIPTION_BYTES);
+  const cards = normalizeFlashcards(parsedData.cards, numQuestions);
 
   // Generate IDs for the deck and cards
   const deck = {
     id: crypto.randomUUID(),
-    title: data.title,
-    description: data.description || `Flashcards about ${topic}`,
-    cards: data.cards.map((card) => ({
+    title,
+    description,
+    cards: cards.map((card) => ({
       id: crypto.randomUUID(),
       front: card.front,
       back: card.back,
     })),
   };
 
-  return jsonResponse(deck);
+  return jsonResponse(deck, 200, req);
 }
 
 /**
@@ -408,7 +658,8 @@ RULES:
  */
 async function handleGenerateDistractors(
   apiKeys: string[],
-  cards: Array<{ id: string; front: string; back: string }>
+  cards: Array<{ id: string; front: string; back: string }>,
+  req: Request,
 ): Promise<Response> {
   const cardsList = cards.map((c) => ({
     id: c.id,
@@ -444,30 +695,36 @@ ${JSON.stringify(cardsList, null, 2)}`;
   };
 
   const responseText = await generateContent(apiKeys, prompt, responseSchema);
-  let distractors = parseAIResponse<Record<string, string[]>>(responseText);
-
-  // Handle array response by converting to object if needed
-  if (Array.isArray(distractors)) {
-    const fallback: Record<string, string[]> = {};
-    cards.forEach(card => {
-      fallback[card.id] = [];
-    });
-    distractors = fallback;
+  const distractors = parseAIResponse(responseText);
+  if (!isRecord(distractors)) {
+    throw aiResponseError("AI returned an invalid distractor response");
   }
 
   // Validate and ensure all cards have distractors
   const validatedDistractors: Record<string, string[]> = {};
   for (const card of cards) {
     const cardDistractors = distractors[card.id];
-    if (Array.isArray(cardDistractors) && cardDistractors.length >= 3) {
-      validatedDistractors[card.id] = cardDistractors.slice(0, 3);
-    } else {
-      // Return empty array for this card - client will use fallback
-      validatedDistractors[card.id] = [];
+    if (!Array.isArray(cardDistractors)) {
+      throw aiResponseError(`AI did not return distractors for card ${card.id}`);
     }
+
+    const uniqueDistractors: string[] = [];
+    for (const distractor of cardDistractors) {
+      const value = requireAIString(distractor, `distractors.${card.id}`, MAX_CARD_TEXT_BYTES);
+      if (value.toLocaleLowerCase() === card.back.toLocaleLowerCase()) continue;
+      if (!uniqueDistractors.some((item) => item.toLocaleLowerCase() === value.toLocaleLowerCase())) {
+        uniqueDistractors.push(value);
+      }
+    }
+
+    if (uniqueDistractors.length < 3) {
+      throw aiResponseError(`AI returned fewer than 3 valid distractors for card ${card.id}`);
+    }
+
+    validatedDistractors[card.id] = uniqueDistractors.slice(0, 3);
   }
 
-  return jsonResponse(validatedDistractors);
+  return jsonResponse(validatedDistractors, 200, req);
 }
 
 /**
@@ -476,7 +733,8 @@ ${JSON.stringify(cardsList, null, 2)}`;
 async function handleGenerateFromText(
   apiKeys: string[],
   text: string,
-  numQuestions: number
+  numQuestions: number,
+  req: Request,
 ): Promise<Response> {
   const prompt = `Create ${numQuestions} flashcard questions and answers from this text.
 
@@ -492,10 +750,10 @@ Source text:
 ${text}`;
 
   const responseText = await generateContent(apiKeys, prompt, flashcardArraySchema as Record<string, unknown>);
-  const parsedData = parseAIResponse<unknown>(responseText);
-  const cards = normalizeFlashcards(parsedData);
+  const parsedData = parseAIResponse(responseText);
+  const cards = normalizeFlashcards(parsedData, numQuestions);
 
-  return jsonResponse(cards);
+  return jsonResponse(cards, 200, req);
 }
 
 /**
@@ -504,7 +762,8 @@ ${text}`;
 async function handleGenerateFromPDF(
   apiKeys: string[],
   pdfBase64: string,
-  numQuestions: number
+  numQuestions: number,
+  req: Request,
 ): Promise<Response> {
   const prompt = `Create ${numQuestions} flashcard questions and answers from this PDF document.
 
@@ -522,71 +781,96 @@ RULES:
     flashcardArraySchema as Record<string, unknown>,
     { mimeType: "application/pdf", data: pdfBase64 }
   );
-  const parsedData = parseAIResponse<unknown>(responseText);
-  const cards = normalizeFlashcards(parsedData);
+  const parsedData = parseAIResponse(responseText);
+  const cards = normalizeFlashcards(parsedData, numQuestions);
 
-  return jsonResponse(cards);
+  return jsonResponse(cards, 200, req);
 }
 
 // ============================================================================
 // Main Handler
 // ============================================================================
 
+async function authenticateRequest(req: Request): Promise<void> {
+  const authorization = req.headers.get("authorization");
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    throw new FunctionError("Authentication required", 401, "AUTH_REQUIRED");
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseKey =
+    Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+  if (!supabaseUrl || !supabaseKey) {
+    throw new FunctionError(
+      "Authentication service is not configured",
+      500,
+      "AUTH_CONFIGURATION_ERROR",
+    );
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { data, error } = await supabase.auth.getUser(match[1]);
+  if (error || !data.user) {
+    throw new FunctionError("Invalid or expired authentication token", 401, "AUTH_INVALID");
+  }
+}
+
 serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    if (!isAllowedOrigin(req)) {
+      return jsonResponse({ error: "Origin not allowed", code: "ORIGIN_NOT_ALLOWED" }, 403, req);
+    }
+    return new Response("ok", { headers: getCorsHeaders(req) });
   }
 
   try {
+    if (req.method !== "POST") {
+      throw new FunctionError("Only POST requests are supported", 405, "METHOD_NOT_ALLOWED");
+    }
+    if (!isAllowedOrigin(req)) {
+      throw new FunctionError("Origin not allowed", 403, "ORIGIN_NOT_ALLOWED");
+    }
+
+    // verify_jwt remains enabled in supabase/config.toml. This explicit check
+    // also protects local/self-hosted deployments where the gateway is absent.
+    await authenticateRequest(req);
+
+    const request = await parseRequest(req);
+
     // Get all available API keys
     const apiKeys = getApiKeys();
     if (apiKeys.length === 0) {
-      throw new Error("No GOOGLE_AI_KEY environment variable is set. Please set GOOGLE_AI_KEY (and optionally GOOGLE_AI_KEY_2, GOOGLE_AI_KEY_3, etc.)");
+      throw new FunctionError(
+        "AI service is not configured",
+        503,
+        "AI_CONFIGURATION_ERROR",
+      );
     }
 
     console.log(`Using ${apiKeys.length} API key(s) for load balancing`);
 
-    const { action, topic, numQuestions = DEFAULT_NUM_QUESTIONS, cards, text, pdfBase64 } =
-      (await req.json()) as FlashcardRequest;
-
-    // Validate numQuestions
-    validateNumQuestions(numQuestions);
-
-    switch (action) {
+    switch (request.action) {
       case "generateDeck": {
-        if (!topic) {
-          throw new Error("Topic is required for generateDeck action");
-        }
-        return await handleGenerateDeck(apiKeys, topic, numQuestions);
+        return await handleGenerateDeck(apiKeys, request.topic, request.numQuestions, req);
       }
 
       case "generateDistractors": {
-        if (!cards || !Array.isArray(cards) || cards.length === 0) {
-          throw new Error("Cards array is required for generateDistractors action");
-        }
-        return await handleGenerateDistractors(apiKeys, cards);
+        return await handleGenerateDistractors(apiKeys, request.cards, req);
       }
 
       case "generateFromText": {
-        if (!text) {
-          throw new Error("Text is required for generateFromText action");
-        }
-        return await handleGenerateFromText(apiKeys, text, numQuestions);
+        return await handleGenerateFromText(apiKeys, request.text, request.numQuestions, req);
       }
 
       case "generateFromPDF": {
-        if (!pdfBase64) {
-          throw new Error("PDF base64 data is required for generateFromPDF action");
-        }
-        validatePdfBase64Size(pdfBase64);
-        return await handleGenerateFromPDF(apiKeys, pdfBase64, numQuestions);
+        return await handleGenerateFromPDF(apiKeys, request.pdfBase64, request.numQuestions, req);
       }
-
-      default:
-        throw new Error(`Unknown action: ${action}`);
     }
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, req);
   }
 });

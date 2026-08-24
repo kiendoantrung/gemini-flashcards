@@ -104,11 +104,14 @@ commands below can be run with `npx`:
 npx supabase login
 npx supabase link --project-ref your-project-ref
 npx supabase secrets set GOOGLE_AI_KEY=your_google_ai_api_key
+npx supabase secrets set ALLOWED_ORIGINS=https://your-app.vercel.app
 npx supabase functions deploy generate-flashcards
 ```
 
-The function requires an authenticated Supabase session, validates its input,
-and calls the `gemini-3.5-flash-lite` model. Inspect deployed functions in the
+`ALLOWED_ORIGINS` is a comma-separated allowlist of browser origins. For local
+development, use `http://localhost:5173`; do not use `*`. The function requires
+an authenticated Supabase session, validates its input, and calls the
+`gemini-3.5-flash-lite` model. Inspect deployed functions in the
 [Supabase Dashboard](https://supabase.com/dashboard/project/_/functions).
 
 > [!CAUTION]

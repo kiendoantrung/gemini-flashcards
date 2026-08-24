@@ -14,20 +14,38 @@ export const RETRY_CONFIG = {
 export const delay = (ms: number): Promise<void> =>
     new Promise((resolve) => setTimeout(resolve, ms));
 
-// Helper function to check if error is retryable
+function getHttpStatus(error: unknown): number | null {
+    if (!error || typeof error !== 'object') return null;
+
+    const errorRecord = error as Record<string, unknown>;
+    if (typeof errorRecord.status === 'number') {
+        return errorRecord.status;
+    }
+
+    const context = errorRecord.context;
+    if (context instanceof Response) {
+        return context.status;
+    }
+
+    return null;
+}
+
+// Retry only transient failures. Validation, auth, permission and payload
+// errors from the Edge Function must fail immediately.
 export function isRetryableError(error: unknown): boolean {
+    const status = getHttpStatus(error);
+    if (status !== null) {
+        return [408, 500, 502, 503, 504].includes(status);
+    }
+
     if (error instanceof Error) {
         const message = error.message.toLowerCase();
+        const name = error.name.toLowerCase();
         return (
             message.includes('network') ||
             message.includes('timeout') ||
-            message.includes('fetch') ||
-            message.includes('rate limit') ||
-            message.includes('429') ||
-            message.includes('500') ||
-            message.includes('502') ||
-            message.includes('503') ||
-            message.includes('504')
+            name.includes('fetcherror') ||
+            name.includes('relayerror')
         );
     }
     return false;
