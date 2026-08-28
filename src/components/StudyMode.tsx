@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { ArrowLeft, ArrowRight, RotateCcw, CheckCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RotateCcw, Sparkles } from 'lucide-react';
 import type { Deck } from '../types/flashcard';
 import { FlashCard } from './FlashCard';
 import { QuizMode } from './QuizMode';
@@ -30,14 +30,14 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
   // Safety check: ensure deck has cards
   if (cardCount === 0) {
     return (
-      <div className="max-w-4xl mx-auto text-center py-12">
-        <div className="bg-white rounded-neo-xl border-2 border-neo-border shadow-neo p-8">
-          <p className="text-neo-charcoal text-lg font-medium mb-4">This deck has no flashcards.</p>
+      <div className="max-w-3xl mx-auto text-center py-12">
+        <div className="card-duo p-10 bg-white">
+          <p className="text-duo-charcoal text-lg font-bold mb-6">This deck has no flashcards yet.</p>
           <button
             onClick={onExit}
-            className="text-neo-green hover:text-neo-charcoal flex items-center gap-2 mx-auto font-bold transition-colors"
+            className="btn-duo-green duo-label px-8 py-3 text-sm"
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-4 h-4 mr-2" />
             Back to Decks
           </button>
         </div>
@@ -50,14 +50,14 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
   // Safety check: ensure currentCard exists
   if (!currentCard) {
     return (
-      <div className="max-w-4xl mx-auto text-center py-12">
-        <div className="bg-white rounded-neo-xl border-2 border-neo-border shadow-neo p-8">
-          <p className="text-neo-charcoal text-lg font-medium mb-4">Card not found.</p>
+      <div className="max-w-3xl mx-auto text-center py-12">
+        <div className="card-duo p-10 bg-white">
+          <p className="text-duo-charcoal text-lg font-bold mb-6">Card not found.</p>
           <button
             onClick={onExit}
-            className="text-neo-green hover:text-neo-charcoal flex items-center gap-2 mx-auto font-bold transition-colors"
+            className="btn-duo-green duo-label px-8 py-3 text-sm"
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-4 h-4 mr-2" />
             Back to Decks
           </button>
         </div>
@@ -73,62 +73,64 @@ export function StudyMode({ deck, onExit }: StudyModeProps) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto py-2">
+      {/* Top Header Controls */}
       <div className="mb-6 flex items-center justify-between">
         <button
           onClick={onExit}
-          className="text-neo-gray hover:text-neo-charcoal flex items-center gap-2 font-bold transition-colors"
+          className="duo-label text-xs md:text-sm text-duo-pencil hover:text-duo-charcoal flex items-center gap-2 transition-colors"
         >
           <RotateCcw className="w-4 h-4" />
           Back to Decks
         </button>
-        <h2 className="text-xl font-heading font-bold text-neo-charcoal">{deck.title}</h2>
-        <div className="px-3 py-1.5 bg-neo-yellow/30 rounded-full border-2 border-neo-border text-sm font-bold text-neo-charcoal">
+        <h2 className="text-lg md:text-xl font-heading font-black text-duo-charcoal truncate max-w-[200px] sm:max-w-sm">
+          {deck.title}
+        </h2>
+        <div className="px-3 py-1 bg-duo-gold-subtle rounded-full border-2 border-duo-gold text-xs font-black text-duo-charcoal">
           {currentIndex + 1} / {cardCount}
         </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="mb-6 h-3 bg-neo-cream rounded-full border-2 border-neo-border overflow-hidden">
+      {/* Duolingo Chunky Progress Bar */}
+      <div className="mb-8 h-4 bg-duo-border/60 rounded-full p-0.5 overflow-hidden">
         <div
-          className="h-full bg-neo-green transition-all duration-300 rounded-full"
+          className="h-full bg-duo-green transition-all duration-300 rounded-full shadow-sm"
           style={{ width: `${((currentIndex + 1) / cardCount) * 100}%` }}
         />
       </div>
 
+      {/* Flashcard Area */}
       <div className="mb-8">
         <FlashCard card={currentCard} />
       </div>
 
+      {/* 3D Action Controls */}
       <div className="flex justify-center gap-4 flex-wrap">
         <button
           onClick={handlePrevious}
           disabled={isFirst}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold border-2 border-neo-border transition-all ${isFirst
-            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            : 'bg-white text-neo-charcoal shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px]'
-            }`}
+          className={`btn-duo-white duo-label px-7 py-3.5 text-sm gap-2 ${
+            isFirst ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''
+          }`}
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4 stroke-[3]" />
           Previous
         </button>
-        <button
-          onClick={handleNext}
-          disabled={isLast}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold border-2 border-neo-border transition-all ${isLast
-            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            : 'bg-neo-green text-white shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px]'
-            }`}
-        >
-          Next
-          <ArrowRight className="w-4 h-4" />
-        </button>
-        {isLast && (
+
+        {!isLast ? (
+          <button
+            onClick={handleNext}
+            className="btn-duo-green duo-label px-8 py-3.5 text-sm gap-2 shadow-duo-green"
+          >
+            Next Card
+            <ArrowRight className="w-4 h-4 stroke-[3]" />
+          </button>
+        ) : (
           <button
             onClick={() => setShowQuiz(true)}
-            className="flex items-center gap-2 px-6 py-3 rounded-full font-bold border-2 border-neo-border bg-neo-accent-blue text-neo-charcoal shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all"
+            className="btn-duo-blue duo-label px-8 py-3.5 text-sm gap-2 shadow-duo-blue"
           >
-            <CheckCircle className="w-4 h-4" />
+            <Sparkles className="w-4 h-4 fill-white" />
             Take Quiz
           </button>
         )}

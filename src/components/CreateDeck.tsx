@@ -75,8 +75,8 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div>
-        <label className="block text-sm font-bold text-neo-charcoal mb-2">
-          Topic Details
+        <label htmlFor="topic" className="block text-xs font-bold text-duo-pencil uppercase tracking-wider mb-2">
+          Topic or Subject
         </label>
         <input
           type="text"
@@ -84,22 +84,24 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
           onBlur={handleTopicBlur}
-          placeholder="Enter a topic (e.g., 'Basic Python Concepts')"
-          className={`w-full px-4 py-3 rounded-neo-md border-2 bg-neo-cream focus:ring-2 focus:ring-neo-green focus:border-neo-green text-neo-charcoal placeholder-neo-gray/60 transition-all font-medium ${fieldErrors.topic ? 'border-red-300' : 'border-neo-border'}`}
+          placeholder="e.g. Basic Spanish Verbs, Photosynthesis, React Hooks"
+          className={`w-full px-4 py-3.5 rounded-2xl border-2 bg-white focus:ring-2 focus:ring-duo-green/20 focus:border-duo-green text-duo-charcoal placeholder-duo-pencil/50 transition-all font-bold ${
+            fieldErrors.topic ? 'border-duo-red' : 'border-duo-border'
+          }`}
           disabled={isLoading}
         />
         {fieldErrors.topic && (
-          <p className="mt-1 text-sm text-red-600 font-medium">{fieldErrors.topic}</p>
+          <p className="mt-1.5 text-xs text-duo-red font-bold">{fieldErrors.topic}</p>
         )}
-        <p className="mt-2 text-xs text-neo-gray flex items-center font-medium">
-          <Wand2 className="w-3 h-3 mr-1 text-neo-green" />
-          Be specific about the topic to get better results
+        <p className="mt-2 text-xs text-duo-pencil flex items-center font-medium">
+          <Wand2 className="w-3.5 h-3.5 mr-1 text-duo-green" />
+          Be specific to get higher quality cards
         </p>
       </div>
 
       <div>
-        <label className="flex items-center justify-between mb-2">
-          <span className="text-sm font-bold text-neo-charcoal">Number of questions:</span>
+        <label htmlFor="numQuestions" className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold text-duo-pencil uppercase tracking-wider">Number of cards:</span>
           <input
             type="number"
             id="numQuestions"
@@ -107,26 +109,26 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
             max="20"
             value={numQuestions}
             onChange={(e) => setNumQuestions(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-            className="w-24 px-3 py-2 border-2 border-neo-border rounded-neo-md bg-neo-cream focus:ring-neo-green focus:border-neo-green text-neo-charcoal text-center font-bold"
+            className="w-20 px-3 py-2 border-2 border-duo-border rounded-xl bg-white focus:ring-2 focus:ring-duo-green/20 focus:border-duo-green text-duo-charcoal text-center font-black text-base"
             disabled={isLoading}
           />
         </label>
-        <p className="mt-1 text-xs text-neo-gray font-medium">
+        <p className="mt-1 text-xs text-duo-pencil font-medium">
           Maximum 20 questions per deck
         </p>
       </div>
 
       {error && (
-        <div className="p-4 bg-neo-pink/20 rounded-neo-md border-2 border-red-300">
-          <p className="text-red-600 text-sm font-medium">
+        <div className="p-4 bg-duo-red-subtle/80 rounded-2xl border-2 border-duo-red">
+          <p className="text-duo-red font-bold text-sm">
             {error}
           </p>
         </div>
       )}
 
       {isLoading && retryCount > 0 && (
-        <div className="p-4 bg-neo-yellow/20 rounded-neo-md border-2 border-neo-yellow">
-          <p className="text-neo-charcoal text-sm font-medium">
+        <div className="p-4 bg-duo-gold-subtle rounded-2xl border-2 border-duo-gold">
+          <p className="text-duo-charcoal text-sm font-bold">
             Retry attempt {retryCount} of {MAX_RETRIES}...
           </p>
         </div>
@@ -135,16 +137,16 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
       <button
         type="submit"
         disabled={isLoading || !topic.trim()}
-        className="w-full px-4 py-3.5 rounded-full bg-neo-green text-white font-bold border-2 border-neo-border shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+        className="btn-duo-green duo-label w-full py-4 text-sm tracking-wider shadow-duo-green disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isLoading ? (
           <>
             <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-            Generating...
+            Generating Cards...
           </>
         ) : (
           <>
-            <Wand2 className="w-5 h-5 mr-2" />
+            <Wand2 className="w-5 h-5 mr-2 stroke-[2.5]" />
             Generate Deck
           </>
         )}

@@ -61,14 +61,16 @@ export function AppHeader({ user, onOpenProfile, onLogout }: AppHeaderProps) {
   };
 
   return (
-    <header className="bg-neo-cream border-b-2 border-neo-border sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4">
+    <header className="bg-white border-b-2 border-duo-border sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-neo-green rounded-neo-md border-2 border-neo-border shadow-neo flex items-center justify-center">
-              <GraduationCap className="w-6 h-6 text-white" />
-            </div>
-            <h1 className="text-xl font-heading font-bold text-neo-charcoal">
+            <img
+              src="/icon.png"
+              alt="Gemini Flashcards Icon"
+              className="w-10 h-10 rounded-duo-md object-contain"
+            />
+            <h1 className="text-xl font-heading font-black text-duo-charcoal tracking-tight">
               Gemini Flashcards
             </h1>
           </div>
@@ -76,44 +78,44 @@ export function AppHeader({ user, onOpenProfile, onLogout }: AppHeaderProps) {
           <div ref={dropdownRef} className="flex items-center gap-4 relative">
             <button
               onClick={() => setShowDropdown((prev) => !prev)}
-              className="flex items-center gap-2 px-3 py-2 rounded-full border-2 border-neo-border bg-white shadow-neo hover:shadow-neo-hover transition-all"
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-full border-2 border-duo-border bg-white shadow-duo-white hover:border-duo-green hover:shadow-duo-hover active:translate-y-[2px] transition-all"
             >
               <Avatar
                 name={displayName}
                 imageUrl={avatarUrl}
                 size="sm"
               />
-              <span className="hidden md:inline text-neo-charcoal font-bold">
+              <span className="hidden md:inline text-duo-charcoal font-bold text-sm">
                 {displayName}
               </span>
               <ChevronDown
-                className={`w-4 h-4 text-neo-gray transition-transform duration-200 ${
+                className={`w-4 h-4 text-duo-pencil transition-transform duration-200 ${
                   showDropdown ? 'transform rotate-180' : ''
                 }`}
               />
             </button>
 
             {showDropdown && (
-              <div className="absolute right-0 top-full mt-2 w-56 rounded-neo-lg bg-white border-2 border-neo-border shadow-neo-lg transform opacity-100 scale-100 transition-all duration-200 ease-out origin-top-right">
+              <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl bg-white border-2 border-duo-border shadow-duo-modal transform opacity-100 scale-100 transition-all duration-200 ease-out origin-top-right overflow-hidden z-50">
                 <div className="py-2" role="menu">
                   <button
                     onClick={() => {
                       onOpenProfile();
                       setShowDropdown(false);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-neo-charcoal hover:bg-neo-green/10 transition-colors duration-150 font-medium"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-duo-charcoal hover:bg-duo-green-subtle/50 transition-colors duration-150 font-bold"
                     role="menuitem"
                   >
-                    <UserCircle className="w-4 h-4 text-neo-green" />
+                    <UserCircle className="w-4 h-4 text-duo-green" />
                     <span>Edit Profile</span>
                   </button>
-                  <div className="h-px bg-neo-border/20 mx-3"></div>
+                  <div className="h-px bg-duo-border mx-3 my-1"></div>
                   <button
                     onClick={handleLogoutClick}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors duration-150 font-medium"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-duo-red hover:bg-duo-red-subtle/50 transition-colors duration-150 font-bold"
                     role="menuitem"
                   >
-                    <LogOut className="w-4 h-4 text-red-500" />
+                    <LogOut className="w-4 h-4 text-duo-red" />
                     <span>Logout</span>
                   </button>
                 </div>

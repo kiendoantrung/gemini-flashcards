@@ -62,27 +62,27 @@ export class ErrorBoundary extends Component<Props, State> {
 
             // Default error UI
             return (
-                <div className="min-h-screen bg-neo-cream flex items-center justify-center p-4">
-                    <div className="max-w-md w-full bg-white rounded-neo-xl border-2 border-neo-border shadow-neo-lg p-8 text-center">
+                <div className="min-h-screen bg-white flex items-center justify-center p-4">
+                    <div className="max-w-md w-full card-duo p-8 text-center bg-white">
                         {/* Error Icon */}
-                        <div className="w-16 h-16 bg-neo-pink/30 rounded-full border-2 border-neo-border flex items-center justify-center mx-auto mb-6">
-                            <AlertTriangle className="w-8 h-8 text-red-500" />
+                        <div className="w-16 h-16 bg-duo-red-subtle rounded-2xl border-2 border-duo-red flex items-center justify-center mx-auto mb-6">
+                            <AlertTriangle className="w-8 h-8 text-duo-red stroke-[2.5]" />
                         </div>
 
                         {/* Error Title */}
-                        <h1 className="text-2xl font-heading font-extrabold text-neo-charcoal mb-2">
+                        <h1 className="text-2xl font-heading font-black text-duo-charcoal mb-2">
                             Oops! Something went wrong
                         </h1>
 
                         {/* Error Description */}
-                        <p className="text-neo-gray mb-6">
-                            We encountered an unexpected error. Don't worry, your data is safe.
+                        <p className="text-duo-pencil mb-6 font-medium">
+                            We encountered an unexpected error. Don't worry, your progress is safe.
                         </p>
 
                         {/* Error Details (development only) */}
                         {import.meta.env.DEV && this.state.error && (
-                            <div className="bg-neo-cream rounded-neo-md border-2 border-neo-border p-4 mb-6 text-left overflow-auto max-h-40">
-                                <p className="text-sm font-mono text-red-600 break-words">
+                            <div className="bg-duo-red-subtle/40 rounded-2xl border-2 border-duo-red/40 p-4 mb-6 text-left overflow-auto max-h-40">
+                                <p className="text-xs font-mono text-duo-red break-words font-bold">
                                     {this.state.error.toString()}
                                 </p>
                             </div>
@@ -92,17 +92,17 @@ export class ErrorBoundary extends Component<Props, State> {
                         <div className="flex flex-col sm:flex-row gap-3 justify-center">
                             <button
                                 onClick={this.handleRetry}
-                                className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-neo-green text-white font-bold rounded-full border-2 border-neo-border shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all"
+                                className="btn-duo-green duo-label px-6 py-3 text-xs tracking-wider shadow-duo-green"
                             >
-                                <RefreshCw className="w-4 h-4" />
+                                <RefreshCw className="w-4 h-4 mr-1.5 stroke-[2.5]" />
                                 Try Again
                             </button>
 
                             <button
                                 onClick={this.handleGoHome}
-                                className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-neo-charcoal font-bold rounded-full border-2 border-neo-border shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all"
+                                className="btn-duo-white duo-label px-6 py-3 text-xs tracking-wider"
                             >
-                                <Home className="w-4 h-4" />
+                                <Home className="w-4 h-4 mr-1.5 stroke-[2.5]" />
                                 Go Home
                             </button>
                         </div>

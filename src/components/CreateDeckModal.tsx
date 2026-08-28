@@ -23,39 +23,41 @@ export function CreateDeckModal({ isOpen, onClose, onDeckCreated }: CreateDeckMo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-neo-charcoal/30 backdrop-blur-sm transition-opacity" onClick={onClose} />
-      <div className="relative bg-neo-cream rounded-neo-xl border-2 border-neo-border shadow-neo-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
+      <div className="absolute inset-0 bg-duo-charcoal/40 backdrop-blur-sm transition-opacity" onClick={onClose} />
+      <div className="relative bg-white rounded-3xl border-2 border-duo-border shadow-duo-modal max-w-4xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-neo-charcoal hover:text-neo-green hover:bg-neo-green/10 rounded-full border-2 border-transparent hover:border-neo-border transition-all"
+          className="absolute top-5 right-5 p-2 text-duo-pencil hover:text-duo-charcoal hover:bg-duo-border/40 rounded-full border-2 border-transparent hover:border-duo-border transition-all"
         >
-          <X className="w-5 h-5" />
+          <X className="w-5 h-5 stroke-[2.5]" />
         </button>
-        <div className="p-6 md:p-8">
-          <h2 className="text-2xl md:text-3xl font-heading font-extrabold text-neo-charcoal mb-2">
+        <div className="p-6 md:p-10">
+          <h2 className="text-2xl md:text-3xl font-heading font-black text-duo-charcoal mb-2">
             Create New Deck
           </h2>
-          <p className="text-neo-gray mb-8">
-            Choose how you want to start your new study deck.
+          <p className="text-duo-pencil mb-8 font-medium">
+            Choose how you want to build your new study set.
           </p>
 
           {/* Mobile Tabs */}
-          <div className="md:hidden flex space-x-2 mb-6 bg-white p-1.5 rounded-neo-lg border-2 border-neo-border">
+          <div className="md:hidden flex space-x-2 mb-6 bg-duo-paper p-1.5 rounded-2xl border-2 border-duo-border">
             <button
               onClick={() => setActiveTab('create')}
-              className={`flex-1 py-2.5 px-4 rounded-neo-md font-bold transition-all duration-200 ${activeTab === 'create'
-                ? 'bg-neo-green text-white border-2 border-neo-border shadow-neo'
-                : 'text-neo-gray hover:text-neo-charcoal'
-                }`}
+              className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wider transition-all duration-150 ${
+                activeTab === 'create'
+                  ? 'bg-duo-green text-white shadow-duo-green'
+                  : 'text-duo-pencil hover:text-duo-charcoal'
+              }`}
             >
-              Generate
+              Generate AI
             </button>
             <button
               onClick={() => setActiveTab('upload')}
-              className={`flex-1 py-2.5 px-4 rounded-neo-md font-bold transition-all duration-200 ${activeTab === 'upload'
-                ? 'bg-neo-accent-blue text-neo-charcoal border-2 border-neo-border shadow-neo'
-                : 'text-neo-gray hover:text-neo-charcoal'
-                }`}
+              className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wider transition-all duration-150 ${
+                activeTab === 'upload'
+                  ? 'bg-duo-blue text-white shadow-duo-blue'
+                  : 'text-duo-pencil hover:text-duo-charcoal'
+              }`}
             >
               Upload File
             </button>
@@ -63,17 +65,21 @@ export function CreateDeckModal({ isOpen, onClose, onDeckCreated }: CreateDeckMo
 
           {/* Desktop Grid */}
           <div className="hidden md:grid md:grid-cols-2 gap-8">
-            <div className="bg-white rounded-neo-lg p-6 border-2 border-neo-border shadow-neo hover:shadow-neo-hover transition-all">
-              <h3 className="text-lg font-heading font-bold text-neo-charcoal mb-4 flex items-center gap-2">
-                <span className="w-10 h-10 rounded-neo-md bg-neo-green/20 border-2 border-neo-border flex items-center justify-center text-neo-green font-bold text-sm">AI</span>
+            <div className="card-duo p-6 bg-white">
+              <h3 className="text-lg font-heading font-bold text-duo-charcoal mb-4 flex items-center gap-2.5">
+                <span className="w-9 h-9 rounded-xl bg-duo-green-subtle border-2 border-duo-green flex items-center justify-center text-duo-green font-black text-xs">
+                  AI
+                </span>
                 Generate with AI
               </h3>
               <CreateDeck onDeckCreated={handleDeckCreated} />
             </div>
-            <div className="bg-white rounded-neo-lg p-6 border-2 border-neo-border shadow-neo hover:shadow-neo-hover transition-all">
-              <h3 className="text-lg font-heading font-bold text-neo-charcoal mb-4 flex items-center gap-2">
-                <span className="w-10 h-10 rounded-neo-md bg-neo-accent-blue/30 border-2 border-neo-border flex items-center justify-center text-neo-charcoal font-bold text-sm">PDF</span>
-                Upload File
+            <div className="card-duo p-6 bg-white">
+              <h3 className="text-lg font-heading font-bold text-duo-charcoal mb-4 flex items-center gap-2.5">
+                <span className="w-9 h-9 rounded-xl bg-duo-blue-subtle border-2 border-duo-blue flex items-center justify-center text-duo-blue font-black text-xs">
+                  PDF
+                </span>
+                Upload Document
               </h3>
               <FileUploadDeck onDeckCreated={handleDeckCreated} />
             </div>
@@ -81,7 +87,7 @@ export function CreateDeckModal({ isOpen, onClose, onDeckCreated }: CreateDeckMo
 
           {/* Mobile Content */}
           <div className="md:hidden">
-            <div className="bg-white rounded-neo-lg p-6 border-2 border-neo-border shadow-neo">
+            <div className="card-duo p-6 bg-white">
               {activeTab === 'create' ? (
                 <CreateDeck onDeckCreated={handleDeckCreated} />
               ) : (

@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, XCircle, AlertCircle, X } from 'lucide-react';
 import { ToastContext, type ToastType } from './toastContext';
-
 
 interface Toast {
   id: string;
@@ -37,41 +36,35 @@ const ToastItem = ({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
   };
 
   const icons = {
-    success: <CheckCircle className="w-5 h-5 text-green-500" />,
-    error: <XCircle className="w-5 h-5 text-red-500" />,
-    warning: <AlertCircle className="w-5 h-5 text-yellow-500" />,
+    success: <CheckCircle className="w-5 h-5 text-duo-green flex-shrink-0" />,
+    error: <XCircle className="w-5 h-5 text-duo-red flex-shrink-0" />,
+    warning: <AlertCircle className="w-5 h-5 text-duo-gold-dark flex-shrink-0" />,
   };
 
   const bgColors = {
-    success: 'bg-green-50 border-green-200',
-    error: 'bg-red-50 border-red-200',
-    warning: 'bg-yellow-50 border-yellow-200',
-  };
-
-  const textColors = {
-    success: 'text-green-800',
-    error: 'text-red-800',
-    warning: 'text-yellow-800',
+    success: 'bg-duo-green-subtle/90 border-duo-green',
+    error: 'bg-duo-red-subtle/90 border-duo-red',
+    warning: 'bg-duo-gold-subtle/90 border-duo-gold',
   };
 
   return (
     <div
       className={`
-        flex items-center gap-3 px-4 py-3 rounded-neo-lg border-2 border-neo-border shadow-neo-lg
+        flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 shadow-duo-modal
         ${bgColors[toast.type]}
         transform transition-all duration-300 ease-out
-        ${isVisible && !isLeaving ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
+        ${isVisible && !isLeaving ? 'translate-x-0 opacity-100 scale-100' : 'translate-x-full opacity-0 scale-95'}
       `}
     >
       {icons[toast.type]}
-      <p className={`flex-1 text-sm font-medium ${textColors[toast.type]}`}>
+      <p className="flex-1 text-sm font-bold text-duo-charcoal">
         {toast.message}
       </p>
       <button
         onClick={handleClose}
-        className="p-1 hover:bg-black/5 rounded-full transition-colors"
+        className="p-1 hover:bg-duo-charcoal/10 rounded-full transition-colors"
       >
-        <X className="w-4 h-4 text-gray-500" />
+        <X className="w-4 h-4 text-duo-pencil" />
       </button>
     </div>
   );
