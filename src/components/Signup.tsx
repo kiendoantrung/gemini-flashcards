@@ -1,6 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { signup } from '../services/authService';
-import { GraduationCap } from 'lucide-react';
 import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
 import { signupFormSchema, validateField, emailSchema, passwordSchema, nameSchema } from '../utils/validation';
 
@@ -145,83 +144,91 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-neo-cream p-4">
-      <div className="max-w-md w-full bg-white rounded-neo-xl border-2 border-neo-border shadow-neo-lg p-8 space-y-8">
+    <div className="min-h-screen flex items-center justify-center bg-white p-4">
+      <div className="max-w-md w-full p-8 md:p-10 space-y-7">
         {/* Logo */}
         <div className="flex justify-center">
-          <div className="w-14 h-14 bg-neo-green rounded-neo-lg border-2 border-neo-border shadow-neo flex items-center justify-center">
-            <GraduationCap className="w-8 h-8 text-white" />
-          </div>
+          <img
+            src="/icon.png"
+            alt="Gemini Flashcards"
+            className="w-16 h-16 rounded-2xl object-contain"
+          />
         </div>
 
         <div className="text-center">
-          <h2 className="text-3xl font-heading font-extrabold text-neo-charcoal mb-2">Create Account</h2>
-          <p className="text-neo-gray">Start your learning journey today</p>
+          <h2 className="text-3xl font-heading font-black text-duo-charcoal mb-1 tracking-tight">Create Account</h2>
+          <p className="text-duo-pencil text-sm font-semibold">Start your learning journey today</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-bold text-neo-charcoal mb-2">Name</label>
+            <label className="block text-xs font-bold text-duo-pencil uppercase tracking-wider mb-2">Full Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onBlur={() => handleBlur('name')}
-              className={`w-full px-4 py-3 bg-neo-cream border-2 rounded-neo-md focus:ring-2 focus:ring-neo-green focus:border-neo-green transition-all text-neo-charcoal font-medium ${fieldErrors.name ? 'border-red-300' : 'border-neo-border'}`}
+              className={`w-full px-4 py-3.5 bg-white border-2 rounded-2xl focus:ring-2 focus:ring-duo-green/20 focus:border-duo-green transition-all text-duo-charcoal font-bold ${
+                fieldErrors.name ? 'border-duo-red' : 'border-duo-border'
+              }`}
               placeholder="Enter your name"
               required
             />
             {fieldErrors.name && (
-              <p className="mt-1 text-sm text-red-600 font-medium">{fieldErrors.name}</p>
+              <p className="mt-1.5 text-xs text-duo-red font-bold">{fieldErrors.name}</p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-neo-charcoal mb-2">Email</label>
+            <label className="block text-xs font-bold text-duo-pencil uppercase tracking-wider mb-2">Email Address</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onBlur={() => handleBlur('email')}
-              className={`w-full px-4 py-3 bg-neo-cream border-2 rounded-neo-md focus:ring-2 focus:ring-neo-green focus:border-neo-green transition-all text-neo-charcoal font-medium ${fieldErrors.email ? 'border-red-300' : 'border-neo-border'}`}
+              className={`w-full px-4 py-3.5 bg-white border-2 rounded-2xl focus:ring-2 focus:ring-duo-green/20 focus:border-duo-green transition-all text-duo-charcoal font-bold ${
+                fieldErrors.email ? 'border-duo-red' : 'border-duo-border'
+              }`}
               placeholder="Enter your email"
               required
             />
             {fieldErrors.email && (
-              <p className="mt-1 text-sm text-red-600 font-medium">{fieldErrors.email}</p>
+              <p className="mt-1.5 text-xs text-duo-red font-bold">{fieldErrors.email}</p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-neo-charcoal mb-2">Password</label>
+            <label className="block text-xs font-bold text-duo-pencil uppercase tracking-wider mb-2">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onBlur={() => handleBlur('password')}
-              className={`w-full px-4 py-3 bg-neo-cream border-2 rounded-neo-md focus:ring-2 focus:ring-neo-green focus:border-neo-green transition-all text-neo-charcoal font-medium ${fieldErrors.password ? 'border-red-300' : 'border-neo-border'}`}
-              placeholder="Create a password (min 8 chars, uppercase, lowercase, number)"
+              className={`w-full px-4 py-3.5 bg-white border-2 rounded-2xl focus:ring-2 focus:ring-duo-green/20 focus:border-duo-green transition-all text-duo-charcoal font-bold ${
+                fieldErrors.password ? 'border-duo-red' : 'border-duo-border'
+              }`}
+              placeholder="Create a password (min 8 chars, mixed)"
               required
             />
             {fieldErrors.password && (
-              <p className="mt-1 text-sm text-red-600 font-medium">{fieldErrors.password}</p>
+              <p className="mt-1.5 text-xs text-duo-red font-bold">{fieldErrors.password}</p>
             )}
           </div>
 
           {error && (
-            <div className="text-red-600 text-sm bg-neo-pink/20 p-4 rounded-neo-md border-2 border-red-300 font-medium">
+            <div className="text-duo-red text-xs bg-duo-red-subtle/80 p-3.5 rounded-2xl border-2 border-duo-red font-bold">
               {error}
               {isLinkExpired && countdown === 0 && (
                 <button
                   type="button"
                   onClick={handleResendVerification}
-                  className="ml-2 text-neo-green hover:text-neo-charcoal font-bold"
+                  className="ml-2 text-duo-blue hover:underline font-black"
                 >
-                  Resend verification email
+                  Resend link
                 </button>
               )}
               {countdown !== null && countdown > 0 && (
-                <div className="mt-2 text-neo-gray">
+                <div className="mt-2 text-duo-pencil font-medium">
                   Please wait {countdown} seconds before requesting a new link.
                 </div>
               )}
@@ -229,7 +236,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
           )}
 
           {successMessage && (
-            <div className="text-emerald-700 text-sm bg-emerald-50 p-4 rounded-neo-md border-2 border-emerald-300 font-medium">
+            <div className="text-duo-green-dark text-xs bg-duo-green-subtle/80 p-3.5 rounded-2xl border-2 border-duo-green font-bold">
               {successMessage}
             </div>
           )}
@@ -260,28 +267,28 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
           <button
             type="submit"
             disabled={isLoading || !isCaptchaReady || (countdown !== null && countdown > 0)}
-            className="w-full bg-neo-green text-white py-3.5 rounded-full font-bold border-2 border-neo-border shadow-neo hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-duo-green duo-label w-full py-4 text-sm tracking-wider shadow-duo-green disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? 'Creating account...' : 'Sign Up'}
+            {isLoading ? 'Creating account...' : 'Create Account'}
           </button>
         </form>
 
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t-2 border-neo-border/30" />
+            <div className="w-full border-t-2 border-duo-border" />
           </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="px-4 bg-white text-neo-gray font-medium">Already registered?</span>
+          <div className="relative flex justify-center text-xs">
+            <span className="px-3 bg-white text-duo-pencil font-bold uppercase tracking-wider">Already registered?</span>
           </div>
         </div>
 
-        <p className="text-center text-sm text-neo-gray">
+        <p className="text-center text-sm text-duo-pencil font-medium">
           Have an account?{' '}
           <button
             onClick={onToggleForm}
-            className="text-neo-green hover:text-neo-charcoal font-bold transition-colors"
+            className="text-duo-blue hover:text-duo-blue-dark font-extrabold transition-colors"
           >
-            Login
+            Log in
           </button>
         </p>
       </div>
