@@ -49,7 +49,7 @@ export function AuthenticatedAppView({
   const [isCreateDeckModalOpen, setIsCreateDeckModalOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-neo-cream flex flex-col">
+    <div className="min-h-screen bg-duo-paper flex flex-col">
       <AppHeader
         user={user}
         onOpenProfile={() => setShowProfileEditor(true)}
@@ -68,7 +68,7 @@ export function AuthenticatedAppView({
         </Suspense>
       )}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full">
+      <main className={editingDeck ? "flex-grow w-full flex flex-col min-h-0" : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex-grow w-full"}>
         {editingDeck ? (
           <Suspense fallback={<LoadingSpinner />}>
             <EditDeckPage
@@ -88,15 +88,15 @@ export function AuthenticatedAppView({
           <StudyMode deck={selectedDeck} onExit={onExitStudyMode} />
         ) : (
           <>
-            <div className="mb-12 text-center">
-              <span className="inline-block px-4 py-2 bg-neo-green text-white font-bold text-sm rounded-full border-2 border-neo-border shadow-neo mb-4">
+            <div className="mb-10 text-center">
+              <span className="inline-block px-4 py-1.5 bg-duo-green-subtle text-duo-green font-bold text-xs uppercase tracking-widest rounded-full border-2 border-duo-green mb-3">
                 Your Dashboard
               </span>
-              <h2 className="text-3xl md:text-4xl font-heading font-extrabold text-neo-charcoal mb-4">
+              <h2 className="text-3xl md:text-4xl font-heading font-black text-duo-charcoal tracking-tight">
                 Your Learning Journey
               </h2>
-              <p className="text-neo-gray text-lg max-w-2xl mx-auto">
-                Manage your flashcard decks and track your progress.
+              <p className="text-duo-pencil text-base md:text-lg max-w-xl mx-auto mt-2 font-medium">
+                Manage your flashcard decks and track your mastery.
               </p>
             </div>
 
