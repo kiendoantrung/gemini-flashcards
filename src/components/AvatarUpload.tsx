@@ -37,13 +37,13 @@ export function AvatarUpload({ userId, currentAvatarUrl, name, onAvatarChange }:
         <Avatar name={name} imageUrl={currentAvatarUrl} size="xl" />
         <label
           htmlFor="avatar-upload"
-          className="absolute -bottom-2 -right-2 p-2.5 bg-accent-yellow rounded-full cursor-pointer hover:bg-yellow-300 transition-all border-2 border-dark neo-shadow group-hover:scale-110 duration-200 z-10"
+          className="absolute -bottom-1 -right-1 p-2 bg-duo-blue text-white rounded-full cursor-pointer hover:bg-duo-blue-dark transition-all border-2 border-duo-blue-dark shadow-duo-blue group-hover:scale-110 duration-200 z-10"
         >
-          <Upload className="w-5 h-5 text-dark" />
+          <Upload className="w-4 h-4 stroke-[2.5]" />
           <input
             id="avatar-upload"
             type="file"
-            className="hidden"
+            className="sr-only"
             accept="image/*"
             onChange={handleFileChange}
             disabled={isUploading}
@@ -51,10 +51,12 @@ export function AvatarUpload({ userId, currentAvatarUrl, name, onAvatarChange }:
         </label>
       </div>
       {isUploading && (
-        <div className="text-sm text-dark/70 animate-pulse font-semibold">📤 Uploading...</div>
+        <div className="text-xs text-duo-pencil animate-pulse font-bold">Uploading...</div>
       )}
       {error && (
-        <div className="text-sm text-dark bg-accent-pink/50 px-3 py-1 rounded-full border-2 border-dark">⚠️ {error}</div>
+        <div className="text-xs text-duo-red bg-duo-red-subtle px-3.5 py-1 rounded-full border-2 border-duo-red font-bold">
+          ⚠️ {error}
+        </div>
       )}
     </div>
   );

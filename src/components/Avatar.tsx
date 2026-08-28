@@ -6,7 +6,7 @@ interface AvatarProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
 }
 
-const AVATAR_COLORS = ['#BBE6F0', '#22C55E', '#FF9F9F', '#FCD34D', '#A5D6E8'];
+const AVATAR_COLORS = ['#d7ffb8', '#ddf4ff', '#ffeb99', '#bae6fd', '#fed7aa'];
 
 export function Avatar({ name, imageUrl, size = 'md' }: AvatarProps) {
   const initials = name.charAt(0).toUpperCase();
@@ -21,9 +21,9 @@ export function Avatar({ name, imageUrl, size = 'md' }: AvatarProps) {
   }, [name]);
 
   const sizeClasses = {
-    sm: 'w-8 h-8 text-sm',
-    md: 'w-10 h-10 text-base',
-    lg: 'w-12 h-12 text-lg',
+    sm: 'w-8 h-8 text-xs',
+    md: 'w-10 h-10 text-sm',
+    lg: 'w-12 h-12 text-base',
     xl: 'w-24 h-24 text-3xl',
     '2xl': 'w-32 h-32 text-4xl'
   };
@@ -33,14 +33,14 @@ export function Avatar({ name, imageUrl, size = 'md' }: AvatarProps) {
       <img
         src={imageUrl}
         alt={name}
-        className={`${sizeClasses[size]} rounded-full object-cover border-2 border-dark`}
+        className={`${sizeClasses[size]} rounded-full object-cover border-2 border-duo-border shadow-sm`}
       />
     );
   }
 
   return (
     <div
-      className={`${sizeClasses[size]} rounded-full flex items-center justify-center text-dark font-bold border-2 border-dark`}
+      className={`${sizeClasses[size]} rounded-full flex items-center justify-center text-duo-charcoal font-black border-2 border-duo-border shadow-sm`}
       style={{ backgroundColor }}
     >
       {initials}

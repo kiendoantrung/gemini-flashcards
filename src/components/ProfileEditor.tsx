@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { updateProfile, updatePassword } from '../services/authService';
 import { AvatarUpload } from './AvatarUpload';
+import { X, Mail } from 'lucide-react';
 
 interface ProfileEditorProps {
   user: User | null;
@@ -15,7 +16,15 @@ export function ProfileEditor({ user, onUpdate, onClose }: ProfileEditorProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState(user?.user_metadata?.avatar_url || null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.user_metadata?.avatar_url || null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   if (!user) return null;
 
@@ -52,79 +61,101 @@ export function ProfileEditor({ user, onUpdate, onClose }: ProfileEditorProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-dark/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-neo-cream rounded-2xl max-w-md w-full p-8 border-2 border-dark neo-shadow animate-scale-in">
-        <h2 className="text-3xl font-heading font-bold mb-8 text-center text-dark">Edit Profile</h2>
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 bg-duo-charcoal/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in"
+    >
+      <div className="bg-white rounded-3xl max-w-md w-full p-7 md:p-8 border-2 border-duo-border shadow-duo-modal animate-scale-in relative">
+        {/* Close X Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-5 right-5 w-8 h-8 rounded-full border-2 border-duo-border text-duo-pencil hover:text-duo-charcoal hover:border-duo-charcoal flex items-center justify-center transition-colors"
+          aria-label="Close"
+        >
+          <X className="w-4 h-4 stroke-[2.5]" />
+        </button>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="flex justify-center mb-8">
+        <h2 className="text-2xl sm:text-3xl font-heading font-black mb-6 text-center text-duo-charcoal tracking-tight">
+          Edit Profile
+        </h2>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="flex flex-col items-center gap-2 mb-4">
             <AvatarUpload
               userId={user.id}
               currentAvatarUrl={avatarUrl}
-              name={name || user?.email}
+              name={name || user?.email || 'User'}
               onAvatarChange={setAvatarUrl}
             />
+            {user.email && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-duo-blue-subtle/50 text-duo-pencil rounded-full border border-duo-border text-xs font-semibold">
+                <Mail className="w-3.5 h-3.5 text-duo-blue" />
+                <span>{user.email}</span>
+              </div>
+            )}
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-dark mb-2">
-              Name
+            <label className="block text-xs font-bold text-duo-pencil uppercase tracking-wider mb-2">
+              Full Name
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-dark rounded-xl focus:ring-2 focus:ring-primary-green focus:border-primary-green transition-all text-dark bg-white neo-shadow"
+              className="w-full px-4 py-3.5 border-2 border-duo-border rounded-2xl focus:ring-2 focus:ring-duo-green/20 focus:border-duo-green transition-all text-duo-charcoal font-bold bg-white"
               placeholder="Your name"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-dark mb-2">
+            <label className="block text-xs font-bold text-duo-pencil uppercase tracking-wider mb-2">
               New Password
             </label>
             <input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-dark rounded-xl focus:ring-2 focus:ring-primary-green focus:border-primary-green transition-all text-dark bg-white neo-shadow"
+              className="w-full px-4 py-3.5 border-2 border-duo-border rounded-2xl focus:ring-2 focus:ring-duo-green/20 focus:border-duo-green transition-all text-duo-charcoal font-bold bg-white"
               placeholder="Leave blank to keep current password"
             />
           </div>
 
           {newPassword && (
             <div className="animate-fade-in">
-              <label className="block text-sm font-semibold text-dark mb-2">
+              <label className="block text-xs font-bold text-duo-pencil uppercase tracking-wider mb-2">
                 Confirm Password
               </label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 border-2 border-dark rounded-xl focus:ring-2 focus:ring-primary-green focus:border-primary-green transition-all text-dark bg-white neo-shadow"
+                className="w-full px-4 py-3.5 border-2 border-duo-border rounded-2xl focus:ring-2 focus:ring-duo-green/20 focus:border-duo-green transition-all text-duo-charcoal font-bold bg-white"
                 placeholder="Confirm new password"
               />
             </div>
           )}
 
           {error && (
-            <div className="text-dark text-sm bg-accent-pink/30 p-3 rounded-xl border-2 border-dark text-center neo-shadow">
+            <div className="text-duo-red text-xs bg-duo-red-subtle/80 p-3.5 rounded-2xl border-2 border-duo-red font-bold text-center">
               {error}
             </div>
           )}
 
-          <div className="flex justify-end gap-3 pt-4 border-t-2 border-dark/10">
+          <div className="flex justify-end gap-3 pt-4 border-t-2 border-duo-border">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 text-neo-charcoal bg-neo-pink border-2 border-neo-border rounded-full font-semibold hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all shadow-neo"
+              className="btn-duo-white duo-label px-6 py-2.5 text-xs tracking-wider"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="px-6 py-2.5 text-white bg-neo-green border-2 border-neo-border rounded-full font-semibold hover:shadow-neo-hover hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-neo-active active:translate-x-[1px] active:translate-y-[1px] transition-all shadow-neo disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-duo-green duo-label px-6 py-2.5 text-xs tracking-wider shadow-duo-green disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? 'Saving...' : 'Save Changes'}
             </button>
