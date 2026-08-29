@@ -1,7 +1,7 @@
 <div align="center">
   <img src="./public/icon.png" alt="Gemini Flashcards icon" width="96" />
   <h1>Gemini Flashcards</h1>
-  <p>Create, organize, and study AI-generated flashcards.</p>
+  <p>Create, organize, and study AI-generated flashcards with Spaced Repetition (SM-2).</p>
 
   [![Build](https://img.shields.io/github/actions/workflow/status/kiendoantrung/gemini-flashcards/deploy.yml?branch=main&style=flat-square&label=Build)](https://github.com/kiendoantrung/gemini-flashcards/actions)
   ![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-3c873a?style=flat-square&logo=node.js)
@@ -10,13 +10,15 @@
 </div>
 
 Gemini Flashcards is a React and TypeScript study app backed by Supabase. It
-can generate decks from a topic, extract content from documents, and turn
-question-and-answer files into study-ready cards.
+can generate decks from a topic, extract content from documents, turn
+question-and-answer files into study-ready cards, and schedule long-term memory
+reviews with the SM-2 Spaced Repetition algorithm.
 
 ## Contents
 
 - [Features](#features)
 - [Architecture](#architecture)
+- [Spaced Repetition (SM-2)](#spaced-repetition-sm-2)
 - [Getting started](#getting-started)
 - [Supabase setup](#supabase-setup)
 - [Database migrations and RLS](#database-migrations-and-rls)
@@ -30,22 +32,54 @@ question-and-answer files into study-ready cards.
 - Generate flashcard decks from a topic with Google Gemini.
 - Generate decks from PDF, DOC, DOCX, and TXT documents.
 - Import Q&A data from CSV, XLS, XLSX, or JSON files.
-- Study with classic flashcards or AI-generated multiple-choice quizzes.
+- **Spaced Repetition Mode** powered by the SuperMemo 2 (SM-2) algorithm.
+- Dashboard progress badges per deck showing `new`, `due`, and `done` card counts.
+- Classic free-flip study mode and AI-generated multiple-choice quizzes.
 - Authenticate with email/password or Google.
 - Manage personal decks and profile avatars.
 - Protect user data with Supabase Row Level Security (RLS).
+- Automated test coverage with Vitest and React Testing Library.
 
 ## Architecture
 
 ```text
 React/Vite client
-    |-- Supabase Auth, Database, and Storage
+    |-- Supabase Auth, Database (decks, card_reviews), and Storage
     |-- Supabase Edge Function: generate-flashcards
                          |-- Google Gemini API
 ```
 
 The browser uses the Supabase publishable/anon key. Gemini requests go through
 the Edge Function so `GOOGLE_AI_KEY` remains a server-side secret.
+
+## Spaced Repetition (SM-2)
+
+The app features an adaptive review scheduling engine based on the **SuperMemo 2 (SM-2)** algorithm to optimize long-term memory retention.
+
+### Recall Ratings & Scheduling
+
+During a Spaced Review session, cards are flipped to reveal the answer, and users rate their recall quality:
+
+| Rating | Quality | Action / Interval |
+|---|---|---|
+| **Again** | 1 | Forgot completely; ease factor decreases by 0.2 (min 1.3). Card is **re-queued at the end of the current session** (`<1m`). |
+| **Hard** | 2 | Recalled with difficulty; ease factor decreases by 0.15. Interval multiplier is 1.2x. |
+| **Good** | 3 | Recalled normally; ease factor unchanged. Interval expands by the deck's ease factor. |
+| **Easy** | 4 | Recalled effortlessly; ease factor increases by 0.15. Interval expands with a 1.3x bonus. |
+
+### Dashboard Progress Indicators
+
+Each deck displays three status counters:
+- 🔵 **`new`**: Cards that have never been reviewed.
+- 🟡 **`due`**: Cards whose review date is due today or earlier.
+- 🟢 **`done`**: Cards reviewed today whose next scheduled review is in the future.
+
+### Session Summary
+
+Upon completing a session, the app presents a summary report including:
+- Total cards reviewed.
+- Breakdown count of ratings (Again / Hard / Good / Easy).
+- Calculated **Retention Rate** percentage.
 
 ## Getting started
 
@@ -90,7 +124,9 @@ npm run dev
 Available scripts:
 
 ```bash
-npm run build     # Production build
+npm test          # Run unit and integration test suite with Vitest
+npm run test:watch # Run Vitest in interactive watch mode
+npm run build     # Production build (Vite)
 npm run lint      # ESLint
 npm run preview   # Preview the production build
 ```
@@ -106,6 +142,7 @@ npx supabase link --project-ref your-project-ref
 npx supabase secrets set GOOGLE_AI_KEY=your_google_ai_api_key
 npx supabase secrets set ALLOWED_ORIGINS=https://your-app.vercel.app
 npx supabase functions deploy generate-flashcards
+npx supabase db push
 ```
 
 `ALLOWED_ORIGINS` is a comma-separated allowlist of browser origins. For local
@@ -120,36 +157,18 @@ an authenticated Supabase session, validates its input, and calls the
 
 ## Database migrations and RLS
 
-The current remote schema is tracked in
-[`supabase/migrations/20260809151507_initial_schema.sql`](./supabase/migrations/20260809151507_initial_schema.sql).
-It was pulled from the existing Supabase project.
+The database schema and migrations are tracked in `supabase/migrations/`:
+- [`20260809151507_initial_schema.sql`](./supabase/migrations/20260809151507_initial_schema.sql): Initial tables (`decks`, `profiles`, `deck_likes`, avatars storage).
+- [`20260829000000_card_reviews.sql`](./supabase/migrations/20260829000000_card_reviews.sql): Table for spaced repetition state (`card_reviews`), indexing on `(user_id, deck_id, due_date)`, unique constraints on `(user_id, deck_id, card_id)`, and Row Level Security (RLS) policies.
 
-The `decks` table has RLS enabled with separate `SELECT`, `INSERT`, `UPDATE`,
-and `DELETE` policies. Each policy restricts access to rows owned by the
-authenticated user with `auth.uid() = user_id`.
+Both `decks` and `card_reviews` tables have RLS enabled with separate `SELECT`, `INSERT`, `UPDATE`,
+and `DELETE` policies, restricting access to rows owned by `auth.uid() = user_id`.
 
-For a future schema or policy change, create and review a migration before
-applying it to the linked project:
+To apply pending migrations to your linked Supabase project:
 
 ```bash
-npx supabase migration new describe_the_change
-# Add and review SQL in the generated file.
 npx supabase db push
-npx supabase migration list
 ```
-
-Use `db pull` when importing or synchronizing an existing remote schema. Do
-not use `db reset --linked`; it is destructive for the remote database. The
-local `supabase/.temp/` directory is ignored because it contains project-link
-metadata.
-
-The initial schema also contains Storage policies for avatars. Public avatar
-reading is intentional; write and delete operations should remain restricted
-to authenticated users and their own objects.
-
-The `deck_likes` table is reserved for a future like/share feature. It is not
-used by the current application and currently has RLS enabled without
-user-facing policies.
 
 ## File processing
 
@@ -178,11 +197,12 @@ The GitHub Actions workflow runs on pushes to `main`:
 
 ```text
 src/
-  components/       React components and screens
-  hooks/            Application state hooks
-  services/         Supabase, file, and AI services
-  types/            TypeScript domain types
+  components/       React components, study modes, and SpacedReviewMode
+  hooks/            Application state hooks (useDashboardState)
+  services/         SM-2 scheduler, Supabase queries, file, and AI services
+  types/            TypeScript domain types (Flashcard, CardReview, DeckProgress)
   lib/              Shared clients and utilities
+  test/             Vitest test setup and DOM matchers
 supabase/
   functions/
     generate-flashcards/  Gemini Edge Function
