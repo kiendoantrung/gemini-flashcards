@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Deck } from '../types/flashcard';
+import type { User } from '@supabase/supabase-js';
+import type { Deck, CardReview } from '../types/flashcard';
 import { AuthenticatedAppView } from './AuthenticatedAppView';
 import { DeckList } from './DeckList';
 import { SpacedReviewMode } from './SpacedReviewMode';
@@ -25,7 +26,7 @@ describe('AuthenticatedAppView routing for spaced review', () => {
   };
 
   const baseProps = {
-    user: { id: 'user-1', email: 'test@example.com' } as any,
+    user: { id: 'user-1', email: 'test@example.com' } as unknown as User,
     decks: [dummyDeck],
     selectedDeck: null,
     editingDeck: null,
@@ -177,7 +178,7 @@ describe('SpacedReviewMode session flow', () => {
       { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
       { card: { id: 'c-2', front: 'Gracias', back: 'Thank you' }, review: null },
     ]);
-    vi.mocked(spacedService.reviewCard).mockResolvedValue({} as any);
+    vi.mocked(spacedService.reviewCard).mockResolvedValue({} as unknown as CardReview);
 
     const user = userEvent.setup();
     render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={vi.fn()} />);
@@ -210,7 +211,7 @@ describe('SpacedReviewMode session flow', () => {
     ]);
     vi.mocked(spacedService.reviewCard)
       .mockRejectedValueOnce(new Error('Network error'))
-      .mockResolvedValueOnce({} as any);
+      .mockResolvedValueOnce({} as unknown as CardReview);
 
     const user = userEvent.setup();
     render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={vi.fn()} />);

@@ -158,13 +158,13 @@ describe('Supabase review persistence and queries', () => {
 
     vi.mocked(supabase.from).mockReturnValue({
       select: mockSelect,
-    } as any);
+    } as unknown as ReturnType<typeof supabase.from>);
     mockSelect.mockReturnValue({
       eq: mockEqUser,
-    } as any);
+    } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
     mockEqUser.mockReturnValue({
       eq: mockEqDeck,
-    } as any);
+    } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
 
     const cards = [
       { id: 'relearn', front: 'A', back: 'a' },
@@ -203,9 +203,6 @@ describe('Supabase review persistence and queries', () => {
       created_at: '2026-08-28T10:00:00.000Z',
     };
 
-    const mockSelect = vi.fn().mockReturnThis();
-    const mockEqUser = vi.fn().mockReturnThis();
-    const mockEqDeck = vi.fn().mockReturnThis();
     const mockEqCard = vi.fn().mockReturnThis();
     const mockMaybeSingle = vi.fn().mockResolvedValue({
       data: existingRow,
@@ -229,9 +226,9 @@ describe('Supabase review persistence and queries', () => {
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'card_reviews') {
         return {
-          select: (columns: string) => ({
-            eq: (col1: string, val1: string) => ({
-              eq: (col2: string, val2: string) => ({
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
                 eq: mockEqCard.mockReturnValue({
                   maybeSingle: mockMaybeSingle,
                 }),
@@ -243,9 +240,9 @@ describe('Supabase review persistence and queries', () => {
               single: mockUpsertSingle,
             }),
           }),
-        } as any;
+        } as unknown as ReturnType<typeof supabase.from>;
       }
-      return {} as any;
+      return {} as unknown as ReturnType<typeof supabase.from>;
     });
 
     await reviewCard('user-1', 'deck-1', 'card-1', 3, now);
@@ -333,13 +330,13 @@ describe('Supabase review persistence and queries', () => {
 
     vi.mocked(supabase.from).mockReturnValue({
       select: mockSelect,
-    } as any);
+    } as unknown as ReturnType<typeof supabase.from>);
     mockSelect.mockReturnValue({
       eq: mockEqUser,
-    } as any);
+    } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
     mockEqUser.mockReturnValue({
       eq: mockEqDeck,
-    } as any);
+    } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
 
     const progress = await getDeckProgress('user-1', 'deck-1', 5, now);
 
