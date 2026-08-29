@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { GraduationCap, Sparkles, Layers, Brain } from 'lucide-react';
+import { Sparkles, Layers, Brain } from 'lucide-react';
 
 export function Footer() {
   const currentYear = useMemo(() => new Date().getFullYear(), []);

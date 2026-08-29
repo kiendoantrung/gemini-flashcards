@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { GraduationCap, UserCircle, LogOut, ChevronDown } from 'lucide-react';
+import { UserCircle, LogOut, ChevronDown } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { Avatar } from './Avatar';
 
