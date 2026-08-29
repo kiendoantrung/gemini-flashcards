@@ -50,7 +50,7 @@ export function DeckList({
         return (
           <div
             key={deck.id}
-            className="group relative bg-white rounded-2xl border-2 border-duo-border shadow-duo-card hover:border-duo-green hover:shadow-duo-card-hover transition-all duration-200 cursor-pointer flex flex-col min-h-[230px]"
+            className="group relative bg-white rounded-2xl border-2 border-duo-border shadow-duo-card hover:border-duo-green hover:shadow-duo-card-hover transition-all duration-200 cursor-pointer flex flex-col min-h-[230px] overflow-hidden"
             onClick={() => onSelectDeck(deck)}
           >
             {/* Card Header Decoration */}
