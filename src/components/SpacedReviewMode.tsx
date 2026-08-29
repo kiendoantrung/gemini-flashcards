@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
 import type { Deck } from '../types/flashcard';
 import { FlashCard } from './FlashCard';
@@ -68,7 +68,7 @@ export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedRev
   });
   const [totalReviewed, setTotalReviewed] = useState(0);
 
-  const fetchDueCards = async () => {
+  const fetchDueCards = useCallback(async () => {
     if (!userId || !deck.id) return;
     setIsLoading(true);
     setLoadError(null);
@@ -77,16 +77,17 @@ export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedRev
       setQueue(due);
       setCurrentIndex(0);
       setIsFlipped(false);
-    } catch (err: any) {
-      setLoadError(err?.message || 'Failed to load due cards');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load due cards';
+      setLoadError(message);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [userId, deck.id, deck.cards]);
 
   useEffect(() => {
     void fetchDueCards();
-  }, [userId, deck.id, deck.cards]);
+  }, [fetchDueCards]);
 
   const isCompleted = !isLoading && queue.length > 0 && currentIndex >= queue.length;
 
