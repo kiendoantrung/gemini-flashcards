@@ -27,3 +27,4 @@ package-lock.json
 .env
 supabase/.temp/
 .worktrees/
+.superpowers/
