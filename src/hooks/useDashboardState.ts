@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
-import type { Deck } from '../types/flashcard';
+import type { Deck, DeckProgress } from '../types/flashcard';
 import { supabase } from '../lib/supabase';
 import { getCurrentUser, logout as logoutService } from '../services/authService';
+import { getDeckProgress } from '../services/spacedRepetitionService';
 import {
   deleteDeck as deleteDeckService,
   getUserDecks,
@@ -18,6 +19,8 @@ interface UseDashboardStateResult {
   decks: Deck[];
   selectedDeck: Deck | null;
   editingDeck: Deck | null;
+  spacedReviewDeck: Deck | null;
+  deckProgressById: Record<string, DeckProgress>;
   markAuthenticated: () => void;
   logoutUser: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -28,6 +31,9 @@ interface UseDashboardStateResult {
   exitStudyMode: () => void;
   startEditingDeck: (deck: Deck) => void;
   stopEditingDeck: () => void;
+  startSpacedReview: (deck: Deck) => void;
+  exitSpacedReview: () => void;
+  refreshDeckProgress: () => Promise<void>;
 }
 
 export function useDashboardState(
@@ -37,7 +43,35 @@ export function useDashboardState(
   const [decks, setDecks] = useState<Deck[]>([]);
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null);
   const [editingDeck, setEditingDeck] = useState<Deck | null>(null);
+  const [spacedReviewDeck, setSpacedReviewDeck] = useState<Deck | null>(null);
+  const [deckProgressById, setDeckProgressById] = useState<Record<string, DeckProgress>>({});
   const [user, setUser] = useState<User | null>(null);
+
+  const fetchProgressForDecks = useCallback(async (userId: string, currentDecks: Deck[]) => {
+    if (!userId || currentDecks.length === 0) {
+      setDeckProgressById({});
+      return;
+    }
+    try {
+      const progressEntries = await Promise.all(
+        currentDecks.map(async (deck) => {
+          const progress = await getDeckProgress(userId, deck.id, deck.cards.length);
+          return [deck.id, progress] as const;
+        })
+      );
+      setDeckProgressById(Object.fromEntries(progressEntries));
+    } catch (error) {
+      console.error('Failed to load deck progress:', error);
+    }
+  }, []);
+
+  const refreshDeckProgress = useCallback(async () => {
+    if (!user) {
+      setDeckProgressById({});
+      return;
+    }
+    await fetchProgressForDecks(user.id, decks);
+  }, [user, decks, fetchProgressForDecks]);
 
   useEffect(() => {
     let isMounted = true;
@@ -52,6 +86,8 @@ export function useDashboardState(
         setDecks([]);
         setSelectedDeck(null);
         setEditingDeck(null);
+        setSpacedReviewDeck(null);
+        setDeckProgressById({});
         return;
       }
 
@@ -59,10 +95,12 @@ export function useDashboardState(
         const userDecks = await getUserDecks(session.user.id);
         if (!isMounted) return;
         setDecks(userDecks);
+        void fetchProgressForDecks(session.user.id, userDecks);
       } catch (error) {
         if (!isMounted) return;
         console.error('Failed to load decks:', error);
         setDecks([]);
+        setDeckProgressById({});
       }
     };
 
@@ -85,7 +123,7 @@ export function useDashboardState(
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchProgressForDecks]);
 
   const markAuthenticated = useCallback(() => {
     setIsAuthenticated(true);
@@ -98,6 +136,8 @@ export function useDashboardState(
     setDecks([]);
     setSelectedDeck(null);
     setEditingDeck(null);
+    setSpacedReviewDeck(null);
+    setDeckProgressById({});
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -117,13 +157,18 @@ export function useDashboardState(
       }
 
       const deckId = await saveDeck(newDeck, currentUser.id);
-      setDecks((prevDecks) => [{ ...newDeck, id: deckId }, ...prevDecks]);
+      const createdDeck = { ...newDeck, id: deckId };
+      setDecks((prevDecks) => {
+        const updated = [createdDeck, ...prevDecks];
+        void fetchProgressForDecks(currentUser.id, updated);
+        return updated;
+      });
     } catch (error) {
       console.error('Failed to save deck:', error);
       showToast('Failed to save deck. Please try again.', 'error');
       throw error;
     }
-  }, [showToast]);
+  }, [showToast, fetchProgressForDecks]);
 
   const updateDeckById = useCallback(
     async (deckId: string, updates: Partial<Deck>) => {
@@ -138,15 +183,20 @@ export function useDashboardState(
 
         await updateDeckService(deckId, updates, currentUser.id);
 
-        setDecks((prevDecks) =>
-          prevDecks.map((deck) =>
+        setDecks((prevDecks) => {
+          const updated = prevDecks.map((deck) =>
             deck.id === deckId ? { ...deck, ...updates } : deck
-          )
-        );
+          );
+          void fetchProgressForDecks(currentUser.id, updated);
+          return updated;
+        });
         setSelectedDeck((prevDeck) =>
           prevDeck?.id === deckId ? { ...prevDeck, ...updates } : prevDeck
         );
         setEditingDeck((prevDeck) =>
+          prevDeck?.id === deckId ? { ...prevDeck, ...updates } : prevDeck
+        );
+        setSpacedReviewDeck((prevDeck) =>
           prevDeck?.id === deckId ? { ...prevDeck, ...updates } : prevDeck
         );
 
@@ -157,7 +207,7 @@ export function useDashboardState(
         throw error;
       }
     },
-    [showToast]
+    [showToast, fetchProgressForDecks]
   );
 
   const deleteDeckById = useCallback(async (deckId: string) => {
@@ -168,17 +218,29 @@ export function useDashboardState(
       if (!currentUser) return;
 
       await deleteDeckService(deckId, currentUser.id);
-      setDecks((prevDecks) => prevDecks.filter((deck) => deck.id !== deckId));
+      setDecks((prevDecks) => {
+        const updated = prevDecks.filter((deck) => deck.id !== deckId);
+        void fetchProgressForDecks(currentUser.id, updated);
+        return updated;
+      });
       setSelectedDeck((prevDeck) =>
         prevDeck?.id === deckId ? null : prevDeck
       );
       setEditingDeck((prevDeck) =>
         prevDeck?.id === deckId ? null : prevDeck
       );
+      setSpacedReviewDeck((prevDeck) =>
+        prevDeck?.id === deckId ? null : prevDeck
+      );
+      setDeckProgressById((prev) => {
+        const next = { ...prev };
+        delete next[deckId];
+        return next;
+      });
     } catch (error) {
       console.error('Failed to delete deck:', error);
     }
-  }, []);
+  }, [fetchProgressForDecks]);
 
   const selectDeck = useCallback((deck: Deck) => {
     setSelectedDeck(deck);
@@ -196,12 +258,27 @@ export function useDashboardState(
     setEditingDeck(null);
   }, []);
 
+  const startSpacedReview = useCallback((deck: Deck) => {
+    setSelectedDeck(null);
+    setEditingDeck(null);
+    setSpacedReviewDeck(deck);
+  }, []);
+
+  const exitSpacedReview = useCallback(() => {
+    setSpacedReviewDeck(null);
+    if (user) {
+      void fetchProgressForDecks(user.id, decks);
+    }
+  }, [user, decks, fetchProgressForDecks]);
+
   return {
     isAuthenticated,
     user,
     decks,
     selectedDeck,
     editingDeck,
+    spacedReviewDeck,
+    deckProgressById,
     markAuthenticated,
     logoutUser,
     refreshUser,
@@ -212,5 +289,8 @@ export function useDashboardState(
     exitStudyMode,
     startEditingDeck,
     stopEditingDeck,
+    startSpacedReview,
+    exitSpacedReview,
+    refreshDeckProgress,
   };
 }

@@ -22,6 +22,8 @@ function AppContent() {
     decks,
     selectedDeck,
     editingDeck,
+    spacedReviewDeck,
+    deckProgressById,
     markAuthenticated,
     logoutUser,
     refreshUser,
@@ -32,6 +34,9 @@ function AppContent() {
     exitStudyMode,
     startEditingDeck,
     stopEditingDeck,
+    startSpacedReview,
+    exitSpacedReview,
+    refreshDeckProgress,
   } = useDashboardState(showToast);
 
   const handleAuthError = (error: Error | string) => {
@@ -77,6 +82,8 @@ function AppContent() {
       decks={decks}
       selectedDeck={selectedDeck}
       editingDeck={editingDeck}
+      spacedReviewDeck={spacedReviewDeck}
+      deckProgressById={deckProgressById}
       onLogout={logoutUser}
       onRefreshUser={refreshUser}
       onDeckCreated={createDeck}
@@ -86,18 +93,23 @@ function AppContent() {
       onEditDeck={startEditingDeck}
       onStopEditing={stopEditingDeck}
       onExitStudyMode={exitStudyMode}
+      onStartSpacedReview={startSpacedReview}
+      onExitSpacedReview={exitSpacedReview}
+      onRefreshDeckProgress={refreshDeckProgress}
     />
   );
 }
 
 function App() {
+  return <AppContent />;
+}
+
+export default function RootApp() {
   return (
     <ErrorBoundary>
       <ToastProvider>
-        <AppContent />
+        <App />
       </ToastProvider>
     </ErrorBoundary>
   );
 }
-
-export default App;

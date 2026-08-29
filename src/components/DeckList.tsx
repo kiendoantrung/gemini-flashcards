@@ -1,8 +1,10 @@
 import { BookOpen, Pencil, Trash, Plus } from 'lucide-react';
-import type { Deck } from '../types/flashcard';
+import type { Deck, DeckProgress } from '../types/flashcard';
 
 interface DeckListProps {
   decks: Deck[];
+  deckProgressById?: Record<string, DeckProgress>;
+  onStartSpacedReview?: (deck: Deck) => void;
   onSelectDeck: (deck: Deck) => void;
   onUpdateDeck: (deckId: string, updates: Partial<Deck>) => void;
   onDeleteDeck: (deckId: string) => void;
@@ -10,7 +12,13 @@ interface DeckListProps {
   onCreateDeck: () => void;
 }
 
-export function DeckList({ decks, onSelectDeck, onDeleteDeck, onEditDeck, onCreateDeck }: DeckListProps) {
+export function DeckList({
+  decks,
+  onSelectDeck,
+  onDeleteDeck,
+  onEditDeck,
+  onCreateDeck,
+}: DeckListProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {/* Create New Deck Card */}

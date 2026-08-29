@@ -1,6 +1,6 @@
 import { useState, lazy, Suspense } from 'react';
 import type { User } from '@supabase/supabase-js';
-import type { Deck } from '../types/flashcard';
+import type { Deck, DeckProgress } from '../types/flashcard';
 import { AppHeader } from './AppHeader';
 import { CreateDeckModal } from './CreateDeckModal';
 import { DeckList } from './DeckList';
@@ -13,12 +13,17 @@ const ProfileEditor = lazy(() =>
 const EditDeckPage = lazy(() =>
   import('./EditDeckPage').then((module) => ({ default: module.EditDeckPage }))
 );
+const SpacedReviewMode = lazy(() =>
+  import('./SpacedReviewMode').then((module) => ({ default: module.SpacedReviewMode }))
+);
 
 interface AuthenticatedAppViewProps {
   user: User | null;
   decks: Deck[];
   selectedDeck: Deck | null;
   editingDeck: Deck | null;
+  spacedReviewDeck?: Deck | null;
+  deckProgressById?: Record<string, DeckProgress>;
   onLogout: () => void | Promise<void>;
   onRefreshUser: () => Promise<void>;
   onDeckCreated: (newDeck: Deck) => Promise<void>;
@@ -28,6 +33,9 @@ interface AuthenticatedAppViewProps {
   onEditDeck: (deck: Deck) => void;
   onStopEditing: () => void;
   onExitStudyMode: () => void;
+  onStartSpacedReview?: (deck: Deck) => void;
+  onExitSpacedReview?: () => void;
+  onRefreshDeckProgress?: () => Promise<void>;
 }
 
 export function AuthenticatedAppView({
@@ -35,6 +43,8 @@ export function AuthenticatedAppView({
   decks,
   selectedDeck,
   editingDeck,
+  spacedReviewDeck,
+  deckProgressById = {},
   onLogout,
   onRefreshUser,
   onDeckCreated,
@@ -44,6 +54,9 @@ export function AuthenticatedAppView({
   onEditDeck,
   onStopEditing,
   onExitStudyMode,
+  onStartSpacedReview,
+  onExitSpacedReview,
+  onRefreshDeckProgress,
 }: AuthenticatedAppViewProps) {
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [isCreateDeckModalOpen, setIsCreateDeckModalOpen] = useState(false);
@@ -84,6 +97,17 @@ export function AuthenticatedAppView({
               onCancel={onStopEditing}
             />
           </Suspense>
+        ) : spacedReviewDeck ? (
+          <Suspense fallback={<LoadingSpinner />}>
+            <SpacedReviewMode
+              deck={spacedReviewDeck}
+              userId={user?.id ?? ''}
+              onExit={onExitSpacedReview ?? (() => {})}
+              onComplete={() => {
+                void onRefreshDeckProgress?.();
+              }}
+            />
+          </Suspense>
         ) : selectedDeck ? (
           <StudyMode deck={selectedDeck} onExit={onExitStudyMode} />
         ) : (
@@ -108,6 +132,8 @@ export function AuthenticatedAppView({
             />
             <DeckList
               decks={decks}
+              deckProgressById={deckProgressById}
+              onStartSpacedReview={onStartSpacedReview}
               onSelectDeck={onSelectDeck}
               onDeleteDeck={(deckId) => {
                 void onDeckDelete(deckId);
