@@ -9,6 +9,7 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     globals: false,
     clearMocks: true,
+    include: ['src/**/*.test.{ts,tsx}'],
   },
   optimizeDeps: {
     exclude: ['pdf-parse']
