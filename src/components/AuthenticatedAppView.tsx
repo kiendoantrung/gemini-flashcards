@@ -16,6 +16,7 @@ const EditDeckPage = lazy(() =>
 const SpacedReviewMode = lazy(() =>
   import('./SpacedReviewMode').then((module) => ({ default: module.SpacedReviewMode }))
 );
+const noop = () => undefined;
 
 interface AuthenticatedAppViewProps {
   user: User | null;
@@ -35,7 +36,6 @@ interface AuthenticatedAppViewProps {
   onExitStudyMode: () => void;
   onStartSpacedReview?: (deck: Deck) => void;
   onExitSpacedReview?: () => void;
-  onRefreshDeckProgress?: () => Promise<void>;
 }
 
 export function AuthenticatedAppView({
@@ -56,7 +56,6 @@ export function AuthenticatedAppView({
   onExitStudyMode,
   onStartSpacedReview,
   onExitSpacedReview,
-  onRefreshDeckProgress,
 }: AuthenticatedAppViewProps) {
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [isCreateDeckModalOpen, setIsCreateDeckModalOpen] = useState(false);
@@ -103,9 +102,7 @@ export function AuthenticatedAppView({
               deck={spacedReviewDeck}
               userId={user?.id ?? ''}
               onExit={onExitSpacedReview ?? (() => {})}
-              onComplete={() => {
-                void onRefreshDeckProgress?.();
-              }}
+              onComplete={noop}
             />
           </Suspense>
         ) : selectedDeck ? (

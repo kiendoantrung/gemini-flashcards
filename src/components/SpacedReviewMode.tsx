@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
 import type { Deck } from '../types/flashcard';
 import { FlashCard } from './FlashCard';
@@ -67,9 +67,11 @@ export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedRev
     4: 0,
   });
   const [totalReviewed, setTotalReviewed] = useState(0);
+  const completionCalledRef = useRef(false);
 
   const fetchDueCards = useCallback(async () => {
     if (!userId || !deck.id) return;
+    completionCalledRef.current = false;
     setIsLoading(true);
     setLoadError(null);
     try {
@@ -92,7 +94,8 @@ export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedRev
   const isCompleted = !isLoading && queue.length > 0 && currentIndex >= queue.length;
 
   useEffect(() => {
-    if (isCompleted) {
+    if (isCompleted && !completionCalledRef.current) {
+      completionCalledRef.current = true;
       onComplete();
     }
   }, [isCompleted, onComplete]);
@@ -104,18 +107,18 @@ export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedRev
     setSubmitError(null);
 
     try {
-      await reviewCard(userId, deck.id, currentItem.card.id, quality);
+      const updatedReview = await reviewCard(userId, deck.id, currentItem.card.id, quality);
+
+      if (quality === 1) {
+        // Requeue Again cards at the end of the current session
+        setQueue((prev) => [...prev, { card: currentItem.card, review: updatedReview }]);
+      }
 
       setRatings((prev) => ({
         ...prev,
         [quality]: prev[quality] + 1,
       }));
       setTotalReviewed((prev) => prev + 1);
-
-      if (quality === 1) {
-        // Requeue Again cards at the end of the current session
-        setQueue((prev) => [...prev, currentItem]);
-      }
 
       setIsFlipped(false);
       setCurrentIndex((prev) => prev + 1);
@@ -283,7 +286,7 @@ export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedRev
       <div className="w-full bg-duo-border h-3 rounded-full overflow-hidden mb-6">
         <div
           className="bg-duo-green h-full transition-all duration-300 rounded-full"
-          style={{ width: `${((currentIndex) / queue.length) * 100}%` }}
+          style={{ width: `${Math.min(((currentIndex + 1) / queue.length) * 100, 100)}%` }}
         />
       </div>
 

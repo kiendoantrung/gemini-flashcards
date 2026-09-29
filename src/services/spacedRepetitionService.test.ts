@@ -108,6 +108,67 @@ describe('Supabase review persistence and queries', () => {
     vi.clearAllMocks();
   });
 
+  it('returns an empty queue for an empty deck', async () => {
+    const mockSelect = vi.fn().mockReturnThis();
+    const mockEqUser = vi.fn().mockReturnThis();
+    const mockEqDeck = vi.fn().mockResolvedValue({ data: [], error: null });
+    vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof supabase.from>);
+    mockSelect.mockReturnValue({ eq: mockEqUser } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    mockEqUser.mockReturnValue({ eq: mockEqDeck } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+
+    await expect(getDueCards('user-1', 'deck-1', [])).resolves.toEqual([]);
+  });
+
+  it('excludes reviews whose cards no longer belong to the deck', async () => {
+    const mockSelect = vi.fn().mockReturnThis();
+    const mockEqUser = vi.fn().mockReturnThis();
+    const mockEqDeck = vi.fn().mockResolvedValue({
+      data: [{
+        id: 'orphan-review', user_id: 'user-1', deck_id: 'deck-1', card_id: 'deleted-card',
+        status: 'review', ease_factor: 2.5, interval: 1, repetitions: 1,
+        due_date: '2026-08-29T10:00:00.000Z', last_reviewed_at: '2026-08-28T10:00:00.000Z',
+        created_at: '2026-08-28T10:00:00.000Z',
+      }],
+      error: null,
+    });
+    vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof supabase.from>);
+    mockSelect.mockReturnValue({ eq: mockEqUser } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    mockEqUser.mockReturnValue({ eq: mockEqDeck } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+
+    const queue = await getDueCards(
+      'user-1',
+      'deck-1',
+      [{ id: 'current-card', front: 'Current', back: 'Card' }],
+      new Date('2026-08-29T12:00:00.000Z')
+    );
+
+    expect(queue.map(({ card }) => card.id)).toEqual(['current-card']);
+    expect(queue[0].review).toBeNull();
+  });
+
+  it('includes a review due exactly at the supplied time', async () => {
+    const now = new Date('2026-08-29T12:00:00.000Z');
+    const mockSelect = vi.fn().mockReturnThis();
+    const mockEqUser = vi.fn().mockReturnThis();
+    const mockEqDeck = vi.fn().mockResolvedValue({
+      data: [{
+        id: 'boundary-review', user_id: 'user-1', deck_id: 'deck-1', card_id: 'card-1',
+        status: 'review', ease_factor: 2.5, interval: 1, repetitions: 1,
+        due_date: now.toISOString(), last_reviewed_at: '2026-08-28T12:00:00.000Z',
+        created_at: '2026-08-28T12:00:00.000Z',
+      }],
+      error: null,
+    });
+    vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof supabase.from>);
+    mockSelect.mockReturnValue({ eq: mockEqUser } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    mockEqUser.mockReturnValue({ eq: mockEqDeck } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+
+    const queue = await getDueCards('user-1', 'deck-1', [{ id: 'card-1', front: 'A', back: 'a' }], now);
+
+    expect(queue).toHaveLength(1);
+    expect(queue[0].card.id).toBe('card-1');
+  });
+
   it('fetches and orders due cards with relearning first, due reviews next, and up to 20 new cards', async () => {
     const mockSelect = vi.fn().mockReturnThis();
     const mockEqUser = vi.fn().mockReturnThis();

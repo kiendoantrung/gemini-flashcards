@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { User } from '@supabase/supabase-js';
 import type { Deck, CardReview } from '../types/flashcard';
@@ -41,7 +41,6 @@ describe('AuthenticatedAppView routing for spaced review', () => {
     onExitStudyMode: vi.fn(),
     onStartSpacedReview: vi.fn(),
     onExitSpacedReview: vi.fn(),
-    onRefreshDeckProgress: vi.fn(),
   };
 
   it('renders SpacedReviewMode when spacedReviewDeck is set', async () => {
@@ -173,12 +172,81 @@ describe('SpacedReviewMode session flow', () => {
     expect(onComplete).toHaveBeenCalled();
   });
 
+  it('calls completion once even when its callback changes after the session completes', async () => {
+    vi.mocked(spacedService.getDueCards).mockResolvedValue([
+      { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
+    ]);
+    vi.mocked(spacedService.reviewCard).mockResolvedValue({} as CardReview);
+
+    const initialOnComplete = vi.fn();
+    const replacementOnComplete = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={initialOnComplete} />
+    );
+
+    await user.click(await screen.findByText('Hola'));
+    await user.click(screen.getByRole('button', { name: /good/i }));
+    await screen.findByText(/session complete/i);
+    expect(initialOnComplete).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={replacementOnComplete} />
+    );
+
+    expect(initialOnComplete).toHaveBeenCalledTimes(1);
+    expect(replacementOnComplete).not.toHaveBeenCalled();
+  });
+
+  it('resets the completion guard for a reloaded session', async () => {
+    vi.mocked(spacedService.getDueCards)
+      .mockResolvedValueOnce([{ card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null }])
+      .mockResolvedValueOnce([{ card: { id: 'c-2', front: 'Gracias', back: 'Thank you' }, review: null }]);
+    vi.mocked(spacedService.reviewCard).mockResolvedValue({} as CardReview);
+
+    const onComplete = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={onComplete} />
+    );
+
+    await user.click(await screen.findByText('Hola'));
+    await user.click(screen.getByRole('button', { name: /good/i }));
+    await screen.findByText(/session complete/i);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <SpacedReviewMode
+        deck={{ ...dummyDeck, cards: [{ id: 'c-2', front: 'Gracias', back: 'Thank you' }] }}
+        userId="user-1"
+        onExit={vi.fn()}
+        onComplete={onComplete}
+      />
+    );
+
+    await user.click(await screen.findByText('Gracias'));
+    await user.click(screen.getByRole('button', { name: /good/i }));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(2));
+  });
+
   it('requeues Again cards to the end of the session queue', async () => {
     vi.mocked(spacedService.getDueCards).mockResolvedValue([
       { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
       { card: { id: 'c-2', front: 'Gracias', back: 'Thank you' }, review: null },
     ]);
-    vi.mocked(spacedService.reviewCard).mockResolvedValue({} as unknown as CardReview);
+    vi.mocked(spacedService.reviewCard).mockResolvedValue({
+      id: 'rev-1',
+      userId: 'user-1',
+      deckId: 'deck-1',
+      cardId: 'c-1',
+      status: 'relearning',
+      easeFactor: 2.3,
+      interval: 0,
+      repetitions: 0,
+      dueDate: '2026-08-29T12:00:00.000Z',
+      lastReviewedAt: '2026-08-29T12:00:00.000Z',
+      createdAt: '2026-08-29T12:00:00.000Z',
+    });
 
     const user = userEvent.setup();
     render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={vi.fn()} />);
@@ -203,6 +271,47 @@ describe('SpacedReviewMode session flow', () => {
     expect(screen.getByText(/again:\s*1/i)).toBeInTheDocument();
     expect(screen.getByText(/good:\s*1/i)).toBeInTheDocument();
     expect(screen.getByText(/easy:\s*1/i)).toBeInTheDocument();
+  });
+
+  it('uses the persisted review state when an Again card is requeued', async () => {
+    const updatedReview: CardReview = {
+      id: 'rev-1',
+      userId: 'user-1',
+      deckId: 'deck-1',
+      cardId: 'c-1',
+      status: 'relearning',
+      repetitions: 0,
+      interval: 0,
+      easeFactor: 2.3,
+      dueDate: '2026-08-29T12:00:00.000Z',
+      lastReviewedAt: '2026-08-29T12:00:00.000Z',
+      createdAt: '2026-08-29T12:00:00.000Z',
+    };
+    vi.mocked(spacedService.getDueCards).mockResolvedValue([
+      { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
+      { card: { id: 'c-2', front: 'Gracias', back: 'Thank you' }, review: null },
+    ]);
+    vi.mocked(spacedService.reviewCard).mockResolvedValue(updatedReview);
+    const calculateSpy = vi.spyOn(spacedService, 'calculateNextReview');
+
+    const user = userEvent.setup();
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={vi.fn()} />);
+
+    await user.click(await screen.findByText('Hola'));
+    await user.click(screen.getByRole('button', { name: /again/i }));
+    await user.click(await screen.findByText('Gracias'));
+    await user.click(screen.getByRole('button', { name: /good/i }));
+    await user.click(await screen.findByText('Hola'));
+
+    expect(calculateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'relearning',
+        repetitions: 0,
+        interval: 0,
+        easeFactor: 2.3,
+      }),
+      expect.any(Number)
+    );
   });
 
   it('handles review failure gracefully and allows retry without losing card', async () => {

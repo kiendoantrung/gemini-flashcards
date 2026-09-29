@@ -36,7 +36,6 @@ function AppContent() {
     stopEditingDeck,
     startSpacedReview,
     exitSpacedReview,
-    refreshDeckProgress,
   } = useDashboardState(showToast);
 
   const handleAuthError = (error: Error | string) => {
@@ -95,7 +94,6 @@ function AppContent() {
       onExitStudyMode={exitStudyMode}
       onStartSpacedReview={startSpacedReview}
       onExitSpacedReview={exitSpacedReview}
-      onRefreshDeckProgress={refreshDeckProgress}
     />
   );
 }

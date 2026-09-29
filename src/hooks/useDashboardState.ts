@@ -33,7 +33,6 @@ interface UseDashboardStateResult {
   stopEditingDeck: () => void;
   startSpacedReview: (deck: Deck) => void;
   exitSpacedReview: () => void;
-  refreshDeckProgress: () => Promise<void>;
 }
 
 export function useDashboardState(
@@ -64,14 +63,6 @@ export function useDashboardState(
       console.error('Failed to load deck progress:', error);
     }
   }, []);
-
-  const refreshDeckProgress = useCallback(async () => {
-    if (!user) {
-      setDeckProgressById({});
-      return;
-    }
-    await fetchProgressForDecks(user.id, decks);
-  }, [user, decks, fetchProgressForDecks]);
 
   useEffect(() => {
     let isMounted = true;
@@ -291,6 +282,5 @@ export function useDashboardState(
     stopEditingDeck,
     startSpacedReview,
     exitSpacedReview,
-    refreshDeckProgress,
   };
 }
