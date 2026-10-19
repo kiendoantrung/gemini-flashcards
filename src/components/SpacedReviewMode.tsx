@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
 import type { Deck } from '../types/flashcard';
 import { FlashCard } from './FlashCard';
@@ -17,7 +17,6 @@ export interface SpacedReviewModeProps {
   deck: Deck;
   userId: string;
   onExit: () => void;
-  onComplete: () => void;
 }
 
 const RATING_BUTTONS: Array<{
@@ -52,9 +51,12 @@ const RATING_BUTTONS: Array<{
   },
 ];
 
-export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedReviewModeProps) {
+export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps) {
   const [queue, setQueue] = useState<DueCard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [sessionCardIds, setSessionCardIds] = useState<string[]>([]);
+  const [completedCardIds, setCompletedCardIds] = useState<Set<string>>(new Set());
+  const [againCounts, setAgainCounts] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -67,17 +69,20 @@ export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedRev
     4: 0,
   });
   const [totalReviewed, setTotalReviewed] = useState(0);
-  const completionCalledRef = useRef(false);
 
   const fetchDueCards = useCallback(async () => {
     if (!userId || !deck.id) return;
-    completionCalledRef.current = false;
     setIsLoading(true);
     setLoadError(null);
     try {
       const due = await getDueCards(userId, deck.id, deck.cards);
       setQueue(due);
       setCurrentIndex(0);
+      setSessionCardIds([...new Set(due.map(({ card }) => card.id))]);
+      setCompletedCardIds(new Set());
+      setAgainCounts({});
+      setRatings({ 1: 0, 2: 0, 3: 0, 4: 0 });
+      setTotalReviewed(0);
       setIsFlipped(false);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load due cards';
@@ -92,13 +97,26 @@ export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedRev
   }, [fetchDueCards]);
 
   const isCompleted = !isLoading && queue.length > 0 && currentIndex >= queue.length;
-
-  useEffect(() => {
-    if (isCompleted && !completionCalledRef.current) {
-      completionCalledRef.current = true;
-      onComplete();
-    }
-  }, [isCompleted, onComplete]);
+  const progressPercentage = isCompleted
+    ? 100
+    : sessionCardIds.length === 0
+      ? 0
+      : Math.round((completedCardIds.size / sessionCardIds.length) * 100);
+  const progressBar = (
+    <div
+      aria-label="Review progress"
+      aria-valuemax={100}
+      aria-valuemin={0}
+      aria-valuenow={progressPercentage}
+      role="progressbar"
+      className="w-full bg-duo-border h-3 rounded-full overflow-hidden mb-6"
+    >
+      <div
+        className="bg-duo-green h-full transition-all duration-300 rounded-full"
+        style={{ width: `${progressPercentage}%` }}
+      />
+    </div>
+  );
 
   const handleRate = async (quality: ReviewQuality) => {
     if (isSubmitting || currentIndex >= queue.length) return;
@@ -110,8 +128,17 @@ export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedRev
       const updatedReview = await reviewCard(userId, deck.id, currentItem.card.id, quality);
 
       if (quality === 1) {
-        // Requeue Again cards at the end of the current session
-        setQueue((prev) => [...prev, { card: currentItem.card, review: updatedReview }]);
+        const previousAgainCount = againCounts[currentItem.card.id] ?? 0;
+        if (previousAgainCount === 0) {
+          // Each card gets one immediate relearning retry; a second Again is
+          // persisted but ends the card's work for this session.
+          setQueue((prev) => [...prev, { card: currentItem.card, review: updatedReview }]);
+          setAgainCounts((prev) => ({ ...prev, [currentItem.card.id]: 1 }));
+        } else {
+          setCompletedCardIds((prev) => new Set(prev).add(currentItem.card.id));
+        }
+      } else {
+        setCompletedCardIds((prev) => new Set(prev).add(currentItem.card.id));
       }
 
       setRatings((prev) => ({
@@ -201,6 +228,7 @@ export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedRev
         <p className="text-duo-pencil font-bold text-lg mb-6">
           {totalReviewed} {totalReviewed === 1 ? 'card' : 'cards'} reviewed
         </p>
+        {progressBar}
 
         {/* Retention Meter */}
         <div className="mb-8 p-4 bg-duo-paper rounded-2xl border-2 border-duo-border inline-block">
@@ -282,13 +310,7 @@ export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedRev
         </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="w-full bg-duo-border h-3 rounded-full overflow-hidden mb-6">
-        <div
-          className="bg-duo-green h-full transition-all duration-300 rounded-full"
-          style={{ width: `${Math.min(((currentIndex + 1) / queue.length) * 100, 100)}%` }}
-        />
-      </div>
+      {progressBar}
 
       {submitError && (
         <div className="mb-4 p-3 bg-rose-50 border-2 border-rose-300 rounded-2xl text-rose-800 text-sm font-bold text-center">
@@ -296,12 +318,14 @@ export function SpacedReviewMode({ deck, userId, onExit, onComplete }: SpacedRev
         </div>
       )}
 
-      {/* FlashCard interactive area */}
-      <div
-        className="mb-8"
-        onClick={() => setIsFlipped((prev) => !prev)}
-      >
-        <FlashCard card={currentItem.card} showAnswer={isFlipped} />
+      {/* FlashCard interactive area — the card reports the flip intent so
+          keyboard activation reveals the rating bar too. */}
+      <div className="mb-8">
+        <FlashCard
+          card={currentItem.card}
+          showAnswer={isFlipped}
+          onFlip={() => setIsFlipped((prev) => !prev)}
+        />
       </div>
 
       {/* Rating actions bar */}

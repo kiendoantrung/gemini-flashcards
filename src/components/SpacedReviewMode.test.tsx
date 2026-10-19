@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { User } from '@supabase/supabase-js';
 import type { Deck, CardReview } from '../types/flashcard';
@@ -12,6 +12,9 @@ vi.mock('../services/spacedRepetitionService', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/spacedRepetitionService')>();
   return {
     ...actual,
+    calculateNextReview: vi.fn((current, quality) =>
+      actual.calculateNextReview(current, quality, new Date('2026-08-29T12:00:00.000Z'))
+    ),
     getDueCards: vi.fn(),
     reviewCard: vi.fn(),
   };
@@ -108,9 +111,7 @@ describe('SpacedReviewMode session flow', () => {
   it('renders empty state when no cards are due', async () => {
     vi.mocked(spacedService.getDueCards).mockResolvedValue([]);
     const onExit = vi.fn();
-    const onComplete = vi.fn();
-
-    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={onExit} onComplete={onComplete} />);
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={onExit} />);
 
     expect(await screen.findByText(/no cards are due/i)).toBeInTheDocument();
 
@@ -141,12 +142,12 @@ describe('SpacedReviewMode session flow', () => {
     });
 
     const onExit = vi.fn();
-    const onComplete = vi.fn();
     const user = userEvent.setup();
 
-    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={onExit} onComplete={onComplete} />);
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={onExit} />);
 
     expect(await screen.findByText('Hola')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: /review progress/i })).toHaveAttribute('aria-valuenow', '0');
 
     // Rating buttons should not be visible before flip
     expect(screen.queryByRole('button', { name: /good/i })).not.toBeInTheDocument();
@@ -169,64 +170,110 @@ describe('SpacedReviewMode session flow', () => {
     expect(await screen.findByText(/1 cards? reviewed/i)).toBeInTheDocument();
     expect(screen.getByText(/good:\s*1/i)).toBeInTheDocument();
     expect(screen.getByText(/retention:\s*100%/i)).toBeInTheDocument();
-    expect(onComplete).toHaveBeenCalled();
+    expect(screen.getByRole('progressbar', { name: /review progress/i })).toHaveAttribute('aria-valuenow', '100');
   });
 
-  it('calls completion once even when its callback changes after the session completes', async () => {
+  it('reveals the rating bar when the card is flipped with the keyboard', async () => {
     vi.mocked(spacedService.getDueCards).mockResolvedValue([
       { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
     ]);
-    vi.mocked(spacedService.reviewCard).mockResolvedValue({} as CardReview);
 
-    const initialOnComplete = vi.fn();
-    const replacementOnComplete = vi.fn();
     const user = userEvent.setup();
-    const { rerender } = render(
-      <SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={initialOnComplete} />
-    );
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
 
-    await user.click(await screen.findByText('Hola'));
-    await user.click(screen.getByRole('button', { name: /good/i }));
-    await screen.findByText(/session complete/i);
-    expect(initialOnComplete).toHaveBeenCalledTimes(1);
+    const card = await screen.findByRole('button', { name: /question: hola/i });
+    card.focus();
+    await user.keyboard('{Enter}');
 
-    rerender(
-      <SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={replacementOnComplete} />
-    );
-
-    expect(initialOnComplete).toHaveBeenCalledTimes(1);
-    expect(replacementOnComplete).not.toHaveBeenCalled();
+    expect(await screen.findByRole('button', { name: /good/i })).toBeInTheDocument();
+    expect(screen.getByText('Hello')).toBeInTheDocument();
   });
 
-  it('resets the completion guard for a reloaded session', async () => {
-    vi.mocked(spacedService.getDueCards)
-      .mockResolvedValueOnce([{ card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null }])
-      .mockResolvedValueOnce([{ card: { id: 'c-2', front: 'Gracias', back: 'Thank you' }, review: null }]);
+  it('reports completed unique cards after a successful review and never reaches 100 before the final rating', async () => {
+    vi.mocked(spacedService.getDueCards).mockResolvedValue([
+      { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
+      { card: { id: 'c-2', front: 'Gracias', back: 'Thank you' }, review: null },
+    ]);
     vi.mocked(spacedService.reviewCard).mockResolvedValue({} as CardReview);
 
-    const onComplete = vi.fn();
     const user = userEvent.setup();
-    const { rerender } = render(
-      <SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={onComplete} />
-    );
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
 
     await user.click(await screen.findByText('Hola'));
     await user.click(screen.getByRole('button', { name: /good/i }));
-    await screen.findByText(/session complete/i);
-    expect(onComplete).toHaveBeenCalledTimes(1);
 
-    rerender(
-      <SpacedReviewMode
-        deck={{ ...dummyDeck, cards: [{ id: 'c-2', front: 'Gracias', back: 'Thank you' }] }}
-        userId="user-1"
-        onExit={vi.fn()}
-        onComplete={onComplete}
-      />
-    );
+    expect(await screen.findByText('Gracias')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: /review progress/i })).toHaveAttribute('aria-valuenow', '50');
 
-    await user.click(await screen.findByText('Gracias'));
+    await user.click(screen.getByText('Gracias'));
     await user.click(screen.getByRole('button', { name: /good/i }));
-    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(2));
+
+    expect(await screen.findByText(/session complete/i)).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: /review progress/i })).toHaveAttribute('aria-valuenow', '100');
+  });
+
+  it('does not decrease progress when Again requeues a card', async () => {
+    vi.mocked(spacedService.getDueCards).mockResolvedValue([
+      { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
+      { card: { id: 'c-2', front: 'Gracias', back: 'Thank you' }, review: null },
+    ]);
+    vi.mocked(spacedService.reviewCard)
+      .mockResolvedValueOnce({} as CardReview)
+      .mockResolvedValueOnce({
+        id: 'rev-2',
+        userId: 'user-1',
+        deckId: 'deck-1',
+        cardId: 'c-2',
+        status: 'relearning',
+        easeFactor: 2.3,
+        interval: 0,
+        repetitions: 0,
+        dueDate: '2026-08-29T12:00:00.000Z',
+        lastReviewedAt: '2026-08-29T12:00:00.000Z',
+        createdAt: '2026-08-29T12:00:00.000Z',
+      });
+
+    const user = userEvent.setup();
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
+
+    await user.click(await screen.findByText('Hola'));
+    await user.click(screen.getByRole('button', { name: /good/i }));
+    expect(screen.getByRole('progressbar', { name: /review progress/i })).toHaveAttribute('aria-valuenow', '50');
+
+    await user.click(screen.getByText('Gracias'));
+    await user.click(screen.getByRole('button', { name: /again/i }));
+    expect(await screen.findByText('Gracias')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: /review progress/i })).toHaveAttribute('aria-valuenow', '50');
+  });
+
+  it('requeues a card at most once after repeated Again ratings', async () => {
+    vi.mocked(spacedService.getDueCards).mockResolvedValue([
+      { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
+    ]);
+    vi.mocked(spacedService.reviewCard).mockResolvedValue({
+      id: 'rev-1',
+      userId: 'user-1',
+      deckId: 'deck-1',
+      cardId: 'c-1',
+      status: 'relearning',
+      easeFactor: 2.3,
+      interval: 0,
+      repetitions: 0,
+      dueDate: '2026-08-29T12:00:00.000Z',
+      lastReviewedAt: '2026-08-29T12:00:00.000Z',
+      createdAt: '2026-08-29T12:00:00.000Z',
+    });
+
+    const user = userEvent.setup();
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
+
+    await user.click(await screen.findByText('Hola'));
+    await user.click(screen.getByRole('button', { name: /again/i }));
+    await user.click(await screen.findByText('Hola'));
+    await user.click(screen.getByRole('button', { name: /again/i }));
+
+    expect(await screen.findByText(/session complete/i)).toBeInTheDocument();
+    expect(screen.getByText(/again:\s*2/i)).toBeInTheDocument();
   });
 
   it('requeues Again cards to the end of the session queue', async () => {
@@ -249,7 +296,7 @@ describe('SpacedReviewMode session flow', () => {
     });
 
     const user = userEvent.setup();
-    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={vi.fn()} />);
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
 
     // Card 1 (Hola) - Rate Again
     expect(await screen.findByText('Hola')).toBeInTheDocument();
@@ -295,7 +342,7 @@ describe('SpacedReviewMode session flow', () => {
     const calculateSpy = vi.spyOn(spacedService, 'calculateNextReview');
 
     const user = userEvent.setup();
-    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={vi.fn()} />);
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
 
     await user.click(await screen.findByText('Hola'));
     await user.click(screen.getByRole('button', { name: /again/i }));
@@ -323,7 +370,7 @@ describe('SpacedReviewMode session flow', () => {
       .mockResolvedValueOnce({} as unknown as CardReview);
 
     const user = userEvent.setup();
-    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} onComplete={vi.fn()} />);
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
 
     expect(await screen.findByText('Hola')).toBeInTheDocument();
     await user.click(screen.getByText('Hola'));
