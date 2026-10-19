@@ -1,11 +1,14 @@
 name: CI
 
-# Quality gate for every change targeting main.
+# Quality gate for every pull request, plus direct pushes to main.
 # See docs/code-review/process.md §3 for the merge gate this enforces.
+#
+# `pull_request` is intentionally unfiltered: a stacked PR targets another
+# feature branch rather than main, and filtering by base branch left those
+# changes ungated until the parent PR merged.
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
 

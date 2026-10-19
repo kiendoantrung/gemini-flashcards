@@ -67,6 +67,16 @@ During a Spaced Review session, cards are flipped to reveal the answer, and user
 | **Good** | 3 | Recalled normally; ease factor unchanged. Interval expands by the deck's ease factor. |
 | **Easy** | 4 | Recalled effortlessly; ease factor increases by 0.15. Interval expands with a 1.3x bonus. |
 
+### Day Boundary
+
+The study day rolls over at **04:00 local time**, not midnight. Reviewing at 01:00
+still counts as the previous day, so the `done` counter keeps climbing and the
+daily new-card budget does not refresh mid-session.
+
+Due dates are aligned to that boundary rather than being "the same clock time N
+days later": a card rated at 23:00 with a 1-day interval becomes due at 04:00 the
+next morning, not at 23:00 the following evening.
+
 ### Dashboard Progress Indicators
 
 Each deck displays three status counters:

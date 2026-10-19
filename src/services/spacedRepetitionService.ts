@@ -17,6 +17,16 @@ const SECOND_INTERVAL_DAYS = 6;
 const HARD_INTERVAL_MULTIPLIER = 1.2;
 const EASY_INTERVAL_BONUS = 1.3;
 
+/**
+ * The study day rolls over at 04:00 local time, not midnight (the Anki
+ * convention). Someone reviewing at 01:00 is still in the previous day's
+ * session: their "done" count keeps climbing and the daily new-card budget
+ * does not silently refresh while they are still studying.
+ */
+export const DAY_ROLLOVER_HOUR = 4;
+
+const HOUR_MS = 60 * 60 * 1000;
+
 export interface DueCard {
   card: Flashcard;
   review: CardReview | null;
@@ -52,10 +62,16 @@ function mapRowToCardReview(row: CardReviewRow): CardReview {
   };
 }
 
+/**
+ * `now` and `timeZone` both default to the ambient values for convenience in
+ * the UI, but the result now depends on the timezone, so tests must pass both
+ * explicitly or they will pass locally and fail on a machine in another zone.
+ */
 export function calculateNextReview(
   current: ReviewState,
   quality: ReviewQuality,
   now: Date = new Date(),
+  timeZone: string = getTimeZone(),
 ): ReviewState & { dueDate: string; lastReviewedAt: string } {
   const nowIso = now.toISOString();
 
@@ -106,7 +122,7 @@ export function calculateNextReview(
     }
   }
 
-  const dueDate = new Date(now.getTime() + interval * 24 * 60 * 60 * 1000).toISOString();
+  const dueDate = dueDateFor(now, interval, timeZone);
 
   return {
     status: 'review',
@@ -127,7 +143,7 @@ export async function getDueCards(
   deckId: string,
   allCards: Flashcard[],
   now: Date = new Date(),
-  timeZone: string = currentTimeZone(),
+  timeZone: string = getTimeZone(),
 ): Promise<DueCard[]> {
   const { data, error } = await supabase
     .from('card_reviews')
@@ -193,6 +209,7 @@ export async function reviewCard(
   cardId: string,
   quality: ReviewQuality,
   now: Date = new Date(),
+  timeZone: string = getTimeZone(),
 ): Promise<CardReview> {
   const { data: existingData, error: fetchError } = await supabase
     .from('card_reviews')
@@ -224,7 +241,7 @@ export async function reviewCard(
         repetitions: 0,
       };
 
-  const nextState = calculateNextReview(currentState, quality, now);
+  const nextState = calculateNextReview(currentState, quality, now, timeZone);
 
   const upsertPayload = {
     user_id: userId,
@@ -390,29 +407,118 @@ export async function undoLastReview(
   };
 }
 
-function currentTimeZone(): string {
+export function getTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 /**
- * Calendar day of `date` in the given timezone, expressed as YYYY-MM-DD.
- * Comparing UTC days directly would put a 01:00 review in GMT+7 on the
- * previous day. A timezone name is used instead of a fixed offset because
- * the offset changes across a daylight-saving transition, and the two
- * timestamps being compared can sit on different sides of it.
+ * Formatters are cached because constructing one costs about ten times as much
+ * as formatting with an existing one, and the review screen recomputes four
+ * interval previews on every render. The key set is tiny: a user has one or two
+ * timezones per session.
+ */
+const formatterCache = new Map<string, Intl.DateTimeFormat>();
+
+function formatterFor(timeZone: string, withTime: boolean): Intl.DateTimeFormat {
+  const cacheKey = `${withTime ? 'datetime' : 'date'}:${timeZone}`;
+  const cached = formatterCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const formatter = new Intl.DateTimeFormat(
+    'en-US',
+    withTime
+      ? {
+          timeZone,
+          hour12: false,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }
+      : { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' },
+  );
+  formatterCache.set(cacheKey, formatter);
+  return formatter;
+}
+
+/**
+ * Logical study day of `date` in the given timezone, expressed as YYYY-MM-DD,
+ * with the day starting at DAY_ROLLOVER_HOUR rather than midnight.
+ *
+ * Shifting the instant back by the rollover amount moves the boundary without
+ * any wall-clock arithmetic, which keeps it correct across a daylight-saving
+ * transition: the shift is applied to an instant, then read in the timezone.
+ *
+ * A timezone name is used instead of a fixed offset because the offset changes
+ * across a DST transition, and the two timestamps being compared can sit on
+ * different sides of it.
  */
 function localDayKey(date: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
+  const shifted = new Date(date.getTime() - DAY_ROLLOVER_HOUR * HOUR_MS);
+  const parts = formatterFor(timeZone, false).formatToParts(shifted);
 
   const part = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((candidate) => candidate.type === type)?.value ?? '';
 
   return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+/** Offset of `timeZone` at `date`, in milliseconds (local wall clock minus UTC). */
+function timeZoneOffsetMs(date: Date, timeZone: string): number {
+  const parts = formatterFor(timeZone, true).formatToParts(date);
+
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((candidate) => candidate.type === type)?.value ?? 0);
+
+  // Some engines report midnight as hour 24 under hour12: false.
+  const wallClock = Date.UTC(
+    part('year'),
+    part('month') - 1,
+    part('day'),
+    part('hour') % 24,
+    part('minute'),
+    part('second'),
+  );
+
+  return wallClock - date.getTime();
+}
+
+/** Adds whole calendar days to a YYYY-MM-DD key. */
+function addDaysToDayKey(dayKey: string, days: number): string {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day));
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
+}
+
+/** The instant at which the logical day `dayKey` starts in `timeZone`. */
+function dayStartForKey(dayKey: string, timeZone: string): Date {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  const wallClock = Date.UTC(year, month - 1, day, DAY_ROLLOVER_HOUR, 0, 0);
+
+  // Two passes: the first offset is read at the uncorrected instant, which is
+  // the wrong side of a DST transition; the second pass uses the corrected one.
+  let instant = wallClock;
+  for (let pass = 0; pass < 2; pass += 1) {
+    instant = wallClock - timeZoneOffsetMs(new Date(instant), timeZone);
+  }
+
+  return new Date(instant);
+}
+
+/**
+ * Due at the start of the study day `interval` days from now, not `interval`
+ * × 24h after the rating. Without this a card rated at 23:00 stays hidden until
+ * 23:00 days later, so a user who studies in the evening watches due cards
+ * drift out of their study window one day at a time.
+ */
+function dueDateFor(now: Date, interval: number, timeZone: string): string {
+  const targetKey = addDaysToDayKey(localDayKey(now, timeZone), interval);
+  return dayStartForKey(targetKey, timeZone).toISOString();
 }
 
 function emptyProgress(): DeckProgress {
@@ -499,7 +605,7 @@ export async function getDeckProgress(
   deckId: string,
   cards: Pick<Flashcard, 'id'>[],
   now: Date = new Date(),
-  timeZone: string = currentTimeZone(),
+  timeZone: string = getTimeZone(),
 ): Promise<DeckProgress> {
   if (cards.length === 0) {
     return emptyProgress();
@@ -527,7 +633,7 @@ export async function getDeckProgressBatch(
   userId: string,
   decks: Array<{ id: string; cards: Pick<Flashcard, 'id'>[] }>,
   now: Date = new Date(),
-  timeZone: string = currentTimeZone(),
+  timeZone: string = getTimeZone(),
 ): Promise<Record<string, DeckProgress>> {
   const deckIds = decks.map((deck) => deck.id);
   if (deckIds.length === 0) {
