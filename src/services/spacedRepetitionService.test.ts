@@ -6,6 +6,7 @@ import {
   getDueCards,
   reviewCard,
   getDeckProgress,
+  getDeckProgressBatch,
 } from './spacedRepetitionService';
 import { supabase } from '../lib/supabase';
 
@@ -46,7 +47,7 @@ describe('spaced repetition contracts', () => {
   });
 });
 
-describe('SM-2 calculation', () => {
+describe('four-grade spaced repetition calculation', () => {
   const now = new Date('2026-08-29T12:00:00.000Z');
   const fresh = { status: 'new' as const, easeFactor: 2.5, interval: 0, repetitions: 0 };
 
@@ -62,42 +63,62 @@ describe('SM-2 calculation', () => {
   });
 
   it.each([
-    [2, 1, 2.35],
-    [3, 1, 2.5],
-    [4, 1, 2.65],
-  ] as const)('schedules first successful review for quality %i', (quality, interval, easeFactor) => {
+    [2, 2.35],
+    [3, 2.5],
+    [4, 2.65],
+  ] as const)('schedules the first successful review for quality %i after one day', (quality, easeFactor) => {
     expect(calculateNextReview(fresh, quality, now))
       .toMatchObject({
         status: 'review',
         repetitions: 1,
+        interval: 1,
+        easeFactor,
+      });
+  });
+
+  it.each([
+    [2, 2.35],
+    [3, 2.5],
+    [4, 2.65],
+  ] as const)('schedules the second successful review for quality %i after six days', (quality, easeFactor) => {
+    expect(calculateNextReview({ ...fresh, repetitions: 1 }, quality, now)).toMatchObject({
+      repetitions: 2,
+      interval: 6,
+      easeFactor,
+    });
+  });
+
+  it.each([
+    [2, 24, 2.35],
+    [3, 25, 2.5],
+    [4, 27, 2.65],
+  ] as const)('applies the updated ease factor once to mature cards for quality %i', (quality, interval, easeFactor) => {
+    expect(calculateNextReview({ status: 'review', repetitions: 2, interval: 10, easeFactor: 2.5 }, quality, now))
+      .toMatchObject({
+        repetitions: 3,
         interval,
         easeFactor,
       });
   });
 
-  it('uses six days for a second success and applies the Easy modifier', () => {
-    expect(calculateNextReview({ ...fresh, repetitions: 1 }, 4, now))
-      .toMatchObject({
-        repetitions: 2,
-        interval: 8,
-        easeFactor: 2.65,
-      });
-  });
+  it('keeps the ease factor at its 1.3 lower bound across repeated Again ratings', () => {
+    const onceAgain = calculateNextReview({ ...fresh, easeFactor: 1.3 }, 1, now);
+    const twiceAgain = calculateNextReview(onceAgain, 1, now);
 
-  it('schedules mature cards using base interval and Good multiplier', () => {
-    expect(calculateNextReview({ status: 'review', repetitions: 2, interval: 10, easeFactor: 2.5 }, 3, now))
-      .toMatchObject({
-        repetitions: 3,
-        interval: 63,
-        easeFactor: 2.5,
-      });
+    expect(onceAgain.easeFactor).toBe(1.3);
+    expect(twiceAgain).toMatchObject({
+      status: 'relearning',
+      repetitions: 0,
+      interval: 0,
+      easeFactor: 1.3,
+    });
   });
 
   it('formats next interval predictions correctly', () => {
     expect(formatNextInterval({ status: 'relearning', interval: 0 })).toBe('<1m');
     expect(formatNextInterval({ status: 'review', interval: 1 })).toBe('1d');
     expect(formatNextInterval({ status: 'review', interval: 6 })).toBe('6d');
-    expect(formatNextInterval({ status: 'review', interval: 8 })).toBe('8d');
+    expect(formatNextInterval({ status: 'review', interval: 25 })).toBe('25d');
   });
 });
 
@@ -399,7 +420,13 @@ describe('Supabase review persistence and queries', () => {
       eq: mockEqDeck,
     } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
 
-    const progress = await getDeckProgress('user-1', 'deck-1', 5, now);
+    const progress = await getDeckProgress(
+      'user-1',
+      'deck-1',
+      ['c-1', 'c-2', 'c-3', 'c-4', 'c-5'].map((id) => ({ id })),
+      now,
+      0,
+    );
 
     expect(progress).toEqual({
       new: 1,
@@ -407,6 +434,169 @@ describe('Supabase review persistence and queries', () => {
       due: 1,
       mastered: 1,
       done: 1,
+    });
+  });
+
+  it('ignores reviews whose card was removed from the deck', async () => {
+    const mockSelect = vi.fn().mockReturnThis();
+    const mockEqUser = vi.fn().mockReturnThis();
+    const mockEqDeck = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'rev-live',
+          user_id: 'user-1',
+          deck_id: 'deck-1',
+          card_id: 'kept',
+          status: 'review',
+          ease_factor: 2.5,
+          interval: 25,
+          repetitions: 3,
+          due_date: '2026-09-20T10:00:00.000Z',
+          last_reviewed_at: '2026-08-26T10:00:00.000Z',
+          created_at: '2026-08-26T10:00:00.000Z',
+        },
+        {
+          id: 'rev-orphan-due',
+          user_id: 'user-1',
+          deck_id: 'deck-1',
+          card_id: 'deleted',
+          status: 'review',
+          ease_factor: 2.5,
+          interval: 1,
+          repetitions: 1,
+          due_date: '2026-08-29T10:00:00.000Z',
+          last_reviewed_at: '2026-08-28T10:00:00.000Z',
+          created_at: '2026-08-28T10:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    vi.mocked(supabase.from).mockReturnValue({
+      select: mockSelect,
+    } as unknown as ReturnType<typeof supabase.from>);
+    mockSelect.mockReturnValue({
+      eq: mockEqUser,
+    } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    mockEqUser.mockReturnValue({
+      eq: mockEqDeck,
+    } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+
+    const progress = await getDeckProgress('user-1', 'deck-1', [{ id: 'kept' }], now, 0);
+
+    // The deleted card must not inflate due/mastered, and the deck still has 1 card.
+    expect(progress).toEqual({
+      new: 0,
+      learning: 0,
+      due: 0,
+      mastered: 1,
+      done: 0,
+    });
+  });
+
+  it('counts "done" by the local calendar day, not the UTC day', async () => {
+    const reviewedAt = '2026-08-29T17:30:00.000Z'; // 00:30 on Aug 30 in GMT+7
+    const localNow = new Date('2026-08-30T00:00:00.000Z'); // 07:00 on Aug 30 in GMT+7
+
+    const mockSelect = vi.fn().mockReturnThis();
+    const mockEqUser = vi.fn().mockReturnThis();
+    const mockEqDeck = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'rev-1',
+          user_id: 'user-1',
+          deck_id: 'deck-1',
+          card_id: 'card-1',
+          status: 'review',
+          ease_factor: 2.5,
+          interval: 6,
+          repetitions: 2,
+          due_date: '2026-09-05T00:00:00.000Z',
+          last_reviewed_at: reviewedAt,
+          created_at: '2026-08-20T10:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    vi.mocked(supabase.from).mockReturnValue({
+      select: mockSelect,
+    } as unknown as ReturnType<typeof supabase.from>);
+    mockSelect.mockReturnValue({
+      eq: mockEqUser,
+    } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    mockEqUser.mockReturnValue({
+      eq: mockEqDeck,
+    } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+
+    const cards = [{ id: 'card-1' }];
+
+    // GMT+7: both timestamps fall on Aug 30 locally.
+    await expect(getDeckProgress('user-1', 'deck-1', cards, localNow, 420)).resolves.toMatchObject({ done: 1 });
+    // UTC: the review is still on Aug 29, so the old behaviour reported nothing.
+    await expect(getDeckProgress('user-1', 'deck-1', cards, localNow, 0)).resolves.toMatchObject({ done: 0 });
+  });
+
+  it('loads progress for every deck in a single query', async () => {
+    const mockSelect = vi.fn().mockReturnThis();
+    const mockEqUser = vi.fn().mockReturnThis();
+    const mockIn = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'rev-a',
+          user_id: 'user-1',
+          deck_id: 'deck-a',
+          card_id: 'a-1',
+          status: 'review',
+          ease_factor: 2.5,
+          interval: 1,
+          repetitions: 1,
+          due_date: '2026-08-29T10:00:00.000Z',
+          last_reviewed_at: '2026-08-28T10:00:00.000Z',
+          created_at: '2026-08-28T10:00:00.000Z',
+        },
+        {
+          id: 'rev-b',
+          user_id: 'user-1',
+          deck_id: 'deck-b',
+          card_id: 'b-1',
+          status: 'relearning',
+          ease_factor: 2.3,
+          interval: 0,
+          repetitions: 0,
+          due_date: '2026-08-29T11:00:00.000Z',
+          last_reviewed_at: '2026-08-29T11:00:00.000Z',
+          created_at: '2026-08-28T10:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    vi.mocked(supabase.from).mockReturnValue({
+      select: mockSelect,
+    } as unknown as ReturnType<typeof supabase.from>);
+    mockSelect.mockReturnValue({
+      eq: mockEqUser,
+    } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    mockEqUser.mockReturnValue({
+      in: mockIn,
+    } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+
+    const progress = await getDeckProgressBatch(
+      'user-1',
+      [
+        { id: 'deck-a', cards: [{ id: 'a-1' }, { id: 'a-2' }] },
+        { id: 'deck-b', cards: [{ id: 'b-1' }] },
+      ],
+      now,
+      0,
+    );
+
+    expect(supabase.from).toHaveBeenCalledTimes(1);
+    expect(mockIn).toHaveBeenCalledWith('deck_id', ['deck-a', 'deck-b']);
+    expect(progress).toEqual({
+      'deck-a': { new: 1, learning: 0, due: 1, mastered: 0, done: 0 },
+      'deck-b': { new: 0, learning: 1, due: 1, mastered: 0, done: 0 },
     });
   });
 });

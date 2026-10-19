@@ -4,6 +4,11 @@ import type { CardReview, DeckProgress, Flashcard, ReviewStatus } from '../types
 export type ReviewQuality = 1 | 2 | 3 | 4;
 export type ReviewState = Pick<CardReview, 'status' | 'easeFactor' | 'interval' | 'repetitions'>;
 
+const REVIEW_COLUMNS =
+  'id, user_id, deck_id, card_id, status, ease_factor, interval, repetitions, due_date, last_reviewed_at, created_at';
+
+const MASTERED_INTERVAL_DAYS = 21;
+
 export interface DueCard {
   card: Flashcard;
   review: CardReview | null;
@@ -65,26 +70,16 @@ export function calculateNextReview(
     easeFactor = Math.round((current.easeFactor + 0.15) * 100) / 100;
   }
 
+  // Four-grade, SM-2-inspired schedule: Hard lowers ease, Good preserves it,
+  // and Easy raises it. The first two successful reviews establish the 1d/6d
+  // learning steps; mature reviews apply the resulting ease exactly once.
   let interval: number;
   if (current.repetitions === 0) {
     interval = 1;
   } else if (current.repetitions === 1) {
-    if (quality === 2) {
-      interval = Math.round(6 * 1.2);
-    } else if (quality === 4) {
-      interval = Math.round(6 * 1.3);
-    } else {
-      interval = 6;
-    }
+    interval = 6;
   } else {
-    const base = Math.round(current.interval * current.easeFactor);
-    if (quality === 2) {
-      interval = Math.max(1, Math.round(base * 1.2));
-    } else if (quality === 4) {
-      interval = Math.max(1, Math.round(base * current.easeFactor * 1.3));
-    } else {
-      interval = Math.max(1, Math.round(base * current.easeFactor));
-    }
+    interval = Math.max(1, Math.round(current.interval * easeFactor));
   }
 
   const dueDate = new Date(now.getTime() + interval * 24 * 60 * 60 * 1000).toISOString();
@@ -111,7 +106,7 @@ export async function getDueCards(
 ): Promise<DueCard[]> {
   const { data, error } = await supabase
     .from('card_reviews')
-    .select('id, user_id, deck_id, card_id, status, ease_factor, interval, repetitions, due_date, last_reviewed_at, created_at')
+    .select(REVIEW_COLUMNS)
     .eq('user_id', userId)
     .eq('deck_id', deckId);
 
@@ -164,7 +159,7 @@ export async function reviewCard(
 ): Promise<CardReview> {
   const { data: existingData, error: fetchError } = await supabase
     .from('card_reviews')
-    .select('id, user_id, deck_id, card_id, status, ease_factor, interval, repetitions, due_date, last_reviewed_at, created_at')
+    .select(REVIEW_COLUMNS)
     .eq('user_id', userId)
     .eq('deck_id', deckId)
     .eq('card_id', cardId)
@@ -206,7 +201,7 @@ export async function reviewCard(
   const { data, error } = await supabase
     .from('card_reviews')
     .upsert(upsertPayload, { onConflict: 'user_id,deck_id,card_id' })
-    .select('id, user_id, deck_id, card_id, status, ease_factor, interval, repetitions, due_date, last_reviewed_at, created_at')
+    .select(REVIEW_COLUMNS)
     .single();
 
   if (error) {
@@ -216,31 +211,43 @@ export async function reviewCard(
   return mapRowToCardReview(data as CardReviewRow);
 }
 
-export async function getDeckProgress(
-  userId: string,
-  deckId: string,
-  totalCards: number,
-  now: Date = new Date(),
-): Promise<DeckProgress> {
-  if (totalCards === 0) {
-    return { new: 0, learning: 0, due: 0, mastered: 0, done: 0 };
+function currentUtcOffsetMinutes(): number {
+  return -new Date().getTimezoneOffset();
+}
+
+/**
+ * Calendar day of `date` in the user's timezone, expressed as YYYY-MM-DD.
+ * Comparing UTC days directly would put a 01:00 review in GMT+7 on the
+ * previous day, so the offset is applied before slicing.
+ */
+function localDayKey(date: Date, utcOffsetMinutes: number): string {
+  return new Date(date.getTime() + utcOffsetMinutes * 60_000).toISOString().slice(0, 10);
+}
+
+function emptyProgress(): DeckProgress {
+  return { new: 0, learning: 0, due: 0, mastered: 0, done: 0 };
+}
+
+/**
+ * Counts a deck's buckets from already-fetched review rows.
+ * Reviews whose card is no longer in the deck are dropped: cards live in the
+ * `decks.cards` JSONB column, so deleting a card leaves its review row behind.
+ */
+function countProgress(
+  reviews: CardReview[],
+  cards: Pick<Flashcard, 'id'>[],
+  now: Date,
+  utcOffsetMinutes: number,
+): DeckProgress {
+  if (cards.length === 0) {
+    return emptyProgress();
   }
 
-  const { data, error } = await supabase
-    .from('card_reviews')
-    .select('id, user_id, deck_id, card_id, status, ease_factor, interval, repetitions, due_date, last_reviewed_at, created_at')
-    .eq('user_id', userId)
-    .eq('deck_id', deckId);
+  const cardIds = new Set(cards.map((card) => card.id));
+  const relevantReviews = reviews.filter((review) => cardIds.has(review.cardId));
 
-  if (error) {
-    throw error;
-  }
-
-  const rows = (data ?? []) as CardReviewRow[];
-  const reviews = rows.map(mapRowToCardReview);
-
-  const uniqueKnownCardIds = new Set(reviews.map((r) => r.cardId));
-  const newCount = Math.max(totalCards - uniqueKnownCardIds.size, 0);
+  const reviewedCardIds = new Set(relevantReviews.map((review) => review.cardId));
+  const newCount = Math.max(cards.length - reviewedCardIds.size, 0);
 
   let learningCount = 0;
   let dueCount = 0;
@@ -248,9 +255,9 @@ export async function getDeckProgress(
   let doneCount = 0;
 
   const nowTime = now.getTime();
-  const nowIsoDateString = now.toISOString().slice(0, 10);
+  const todayKey = localDayKey(now, utcOffsetMinutes);
 
-  for (const review of reviews) {
+  for (const review of relevantReviews) {
     if (review.status === 'learning' || review.status === 'relearning') {
       learningCount++;
     }
@@ -260,15 +267,16 @@ export async function getDeckProgress(
       dueCount++;
     }
 
-    if (review.interval >= 21) {
+    if (review.interval >= MASTERED_INTERVAL_DAYS) {
       masteredCount++;
     }
 
-    if (review.lastReviewedAt) {
-      const reviewedDateIsoString = new Date(review.lastReviewedAt).toISOString().slice(0, 10);
-      if (reviewedDateIsoString === nowIsoDateString && dueTime > nowTime) {
-        doneCount++;
-      }
+    if (
+      review.lastReviewedAt &&
+      dueTime > nowTime &&
+      localDayKey(new Date(review.lastReviewedAt), utcOffsetMinutes) === todayKey
+    ) {
+      doneCount++;
     }
   }
 
@@ -279,4 +287,77 @@ export async function getDeckProgress(
     mastered: masteredCount,
     done: doneCount,
   };
+}
+
+function groupReviewsByDeck(rows: CardReviewRow[]): Map<string, CardReview[]> {
+  const byDeck = new Map<string, CardReview[]>();
+  for (const row of rows) {
+    const review = mapRowToCardReview(row);
+    const bucket = byDeck.get(review.deckId);
+    if (bucket) {
+      bucket.push(review);
+    } else {
+      byDeck.set(review.deckId, [review]);
+    }
+  }
+  return byDeck;
+}
+
+export async function getDeckProgress(
+  userId: string,
+  deckId: string,
+  cards: Pick<Flashcard, 'id'>[],
+  now: Date = new Date(),
+  utcOffsetMinutes: number = currentUtcOffsetMinutes(),
+): Promise<DeckProgress> {
+  if (cards.length === 0) {
+    return emptyProgress();
+  }
+
+  const { data, error } = await supabase
+    .from('card_reviews')
+    .select(REVIEW_COLUMNS)
+    .eq('user_id', userId)
+    .eq('deck_id', deckId);
+
+  if (error) {
+    throw error;
+  }
+
+  const reviews = ((data ?? []) as CardReviewRow[]).map(mapRowToCardReview);
+  return countProgress(reviews, cards, now, utcOffsetMinutes);
+}
+
+/**
+ * Progress for every deck in one round trip. The dashboard used to issue one
+ * query per deck, which grows linearly with the number of decks.
+ */
+export async function getDeckProgressBatch(
+  userId: string,
+  decks: Array<{ id: string; cards: Pick<Flashcard, 'id'>[] }>,
+  now: Date = new Date(),
+  utcOffsetMinutes: number = currentUtcOffsetMinutes(),
+): Promise<Record<string, DeckProgress>> {
+  const deckIds = decks.map((deck) => deck.id);
+  if (deckIds.length === 0) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from('card_reviews')
+    .select(REVIEW_COLUMNS)
+    .eq('user_id', userId)
+    .in('deck_id', deckIds);
+
+  if (error) {
+    throw error;
+  }
+
+  const byDeck = groupReviewsByDeck((data ?? []) as CardReviewRow[]);
+
+  const progressById: Record<string, DeckProgress> = {};
+  for (const deck of decks) {
+    progressById[deck.id] = countProgress(byDeck.get(deck.id) ?? [], deck.cards, now, utcOffsetMinutes);
+  }
+  return progressById;
 }
