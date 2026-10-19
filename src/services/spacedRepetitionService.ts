@@ -11,11 +11,31 @@ const MASTERED_INTERVAL_DAYS = 21;
 const DAILY_NEW_CARD_LIMIT = 20;
 
 const MIN_EASE_FACTOR = 1.3;
+/**
+ * Ceiling on ease. Ease compounds, so a card answered Easy a few times in a row
+ * would otherwise reach intervals in the thousands of days before the interval
+ * cap below ever binds. Anki allows up to 5.0; with a one-year interval ceiling
+ * anything past 3.0 has no practical effect, so the tighter bound is used.
+ */
+const MAX_EASE_FACTOR = 3.0;
 const FIRST_INTERVAL_DAYS = 1;
 const SECOND_INTERVAL_DAYS = 6;
 /** Hard barely grows the current interval; Easy adds a flat bonus on top of ease. */
 const HARD_INTERVAL_MULTIPLIER = 1.2;
 const EASY_INTERVAL_BONUS = 1.3;
+/**
+ * A card is never scheduled further out than this. Without a ceiling a mature
+ * card reaches multi-year intervals, which for a personal deck means it is
+ * effectively gone.
+ */
+const MAX_INTERVAL_DAYS = 365;
+/**
+ * Intervals are randomised by up to 5% (at least one day) so that cards learned
+ * on the same day do not come due as one clump forever. Below this threshold
+ * fuzzing is pointless: 5% of one day rounds to zero.
+ */
+const FUZZ_RATIO = 0.05;
+const FUZZ_MIN_INTERVAL_DAYS = 2;
 
 /**
  * The study day rolls over at 04:00 local time, not midnight (the Anki
@@ -91,7 +111,7 @@ export function calculateNextReview(
   if (quality === 2) {
     easeFactor = Math.max(MIN_EASE_FACTOR, Math.round((current.easeFactor - 0.15) * 100) / 100);
   } else if (quality === 4) {
-    easeFactor = Math.round((current.easeFactor + 0.15) * 100) / 100;
+    easeFactor = Math.min(MAX_EASE_FACTOR, Math.round((current.easeFactor + 0.15) * 100) / 100);
   }
 
   // Four-grade, SM-2-inspired schedule: Hard lowers ease, Good preserves it,
@@ -122,16 +142,36 @@ export function calculateNextReview(
     }
   }
 
-  const dueDate = dueDateFor(now, interval, timeZone);
+  const dueDate = dueDateFor(now, Math.min(interval, MAX_INTERVAL_DAYS), timeZone);
 
   return {
     status: 'review',
     repetitions: current.repetitions + 1,
-    interval,
+    interval: Math.min(interval, MAX_INTERVAL_DAYS),
     easeFactor,
     dueDate,
     lastReviewedAt: nowIso,
   };
+}
+
+/**
+ * Spreads an interval by up to FUZZ_RATIO so cards sharing a learn date drift
+ * apart instead of coming due together forever. The jitter is at least one day
+ * because 5% of a short interval rounds to zero, which would leave small
+ * intervals un-fuzzed and still clumped.
+ *
+ * Kept out of calculateNextReview on purpose: the review screen recomputes four
+ * interval previews on every render, and a random result there would make the
+ * "8d" badges flicker. Anki also shows the un-fuzzed number in the preview.
+ */
+function fuzzInterval(interval: number, random: () => number): number {
+  if (interval < FUZZ_MIN_INTERVAL_DAYS) {
+    return interval;
+  }
+
+  const spread = Math.max(1, Math.round(interval * FUZZ_RATIO));
+  const offset = Math.floor(random() * (spread * 2 + 1)) - spread;
+  return Math.min(MAX_INTERVAL_DAYS, Math.max(1, interval + offset));
 }
 
 export function formatNextInterval(next: Pick<ReviewState, 'interval' | 'status'>): string {
@@ -210,6 +250,8 @@ export async function reviewCard(
   quality: ReviewQuality,
   now: Date = new Date(),
   timeZone: string = getTimeZone(),
+  /** Injectable so tests can pin the fuzz instead of asserting a range. */
+  random: () => number = Math.random,
 ): Promise<CardReview> {
   const { data: existingData, error: fetchError } = await supabase
     .from('card_reviews')
@@ -243,15 +285,21 @@ export async function reviewCard(
 
   const nextState = calculateNextReview(currentState, quality, now, timeZone);
 
+  // Fuzz here rather than in calculateNextReview: this is the value that gets
+  // persisted, while the UI preview must stay stable across re-renders.
+  const interval = fuzzInterval(nextState.interval, random);
+  const dueDate =
+    interval === nextState.interval ? nextState.dueDate : dueDateFor(now, interval, timeZone);
+
   const upsertPayload = {
     user_id: userId,
     deck_id: deckId,
     card_id: cardId,
     status: nextState.status,
     ease_factor: nextState.easeFactor,
-    interval: nextState.interval,
+    interval,
     repetitions: nextState.repetitions,
-    due_date: nextState.dueDate,
+    due_date: dueDate,
     last_reviewed_at: nextState.lastReviewedAt,
   };
 
@@ -283,9 +331,10 @@ export async function reviewCard(
     prev_last_reviewed_at: existingReview?.lastReviewedAt ?? null,
     next_status: nextState.status,
     next_ease_factor: nextState.easeFactor,
-    next_interval: nextState.interval,
+    // The fuzzed values, so the log matches the row that was actually written.
+    next_interval: interval,
     next_repetitions: nextState.repetitions,
-    next_due_date: nextState.dueDate,
+    next_due_date: dueDate,
     reviewed_at: nextState.lastReviewedAt,
   });
 
