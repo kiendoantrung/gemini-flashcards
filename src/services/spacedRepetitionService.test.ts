@@ -65,17 +65,42 @@ describe('four-grade spaced repetition calculation', () => {
   });
 
   it.each([
-    [2, 2.35],
-    [3, 2.5],
-    [4, 2.65],
-  ] as const)('schedules the first successful review for quality %i after one day', (quality, easeFactor) => {
-    expect(calculateNextReview(fresh, quality, now, 'UTC'))
-      .toMatchObject({
-        status: 'review',
-        repetitions: 1,
-        interval: 1,
-        easeFactor,
-      });
+    [3, 1, 2.5],
+    [4, 4, 2.65],
+  ] as const)('graduates a new card on quality %i after %i days', (quality, interval, easeFactor) => {
+    expect(calculateNextReview(fresh, quality, now, 'UTC')).toMatchObject({
+      status: 'review',
+      repetitions: 1,
+      interval,
+      easeFactor,
+    });
+  });
+
+  it('keeps a new card in learning when it is rated Hard', () => {
+    // Hard must not graduate: a card that was barely recalled is not ready for
+    // a one-day gap. Before this, Hard, Good and Easy all gave one day.
+    expect(calculateNextReview(fresh, 2, now, 'UTC')).toMatchObject({
+      status: 'learning',
+      repetitions: 0,
+      interval: 0,
+      easeFactor: 2.35,
+      dueDate: now.toISOString(),
+    });
+  });
+
+  it('separates a first Again (learning) from a later Again (relearning)', () => {
+    const firstAgain = calculateNextReview(fresh, 1, now, 'UTC');
+    const relapse = calculateNextReview(
+      { status: 'review', repetitions: 3, interval: 10, easeFactor: 2.5 },
+      1,
+      now,
+      'UTC',
+    );
+
+    expect(firstAgain.status).toBe('learning');
+    expect(relapse.status).toBe('relearning');
+    expect(formatNextInterval(firstAgain)).toBe('<1m');
+    expect(formatNextInterval(relapse)).toBe('<1m');
   });
 
   it.each([
@@ -107,7 +132,8 @@ describe('four-grade spaced repetition calculation', () => {
     const mature = { status: 'review' as const, repetitions: 2, interval: 10, easeFactor: 2.5 };
     const secondStep = { ...fresh, repetitions: 1 };
 
-    for (const state of [mature, secondStep]) {
+    // `fresh` is the case that used to be wrong: all three grades returned 1 day.
+    for (const state of [fresh, mature, secondStep]) {
       const hard = calculateNextReview(state, 2, now, 'UTC').interval;
       const good = calculateNextReview(state, 3, now, 'UTC').interval;
       const easy = calculateNextReview(state, 4, now, 'UTC').interval;
@@ -123,7 +149,7 @@ describe('four-grade spaced repetition calculation', () => {
 
     expect(onceAgain.easeFactor).toBe(1.3);
     expect(twiceAgain).toMatchObject({
-      status: 'relearning',
+      status: 'learning',
       repetitions: 0,
       interval: 0,
       easeFactor: 1.3,
