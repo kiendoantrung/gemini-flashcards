@@ -248,7 +248,146 @@ export async function reviewCard(
     throw error;
   }
 
-  return mapRowToCardReview(data as CardReviewRow);
+  const savedReview = mapRowToCardReview(data as CardReviewRow);
+
+  // The rating is already persisted at this point. A failed log write costs the
+  // user the ability to undo this one rating, which is a far better outcome than
+  // surfacing an error for a review that did save.
+  const { error: logError } = await supabase.from('review_logs').insert({
+    user_id: userId,
+    deck_id: deckId,
+    card_id: cardId,
+    quality,
+    prev_status: currentState.status,
+    prev_ease_factor: currentState.easeFactor,
+    prev_interval: currentState.interval,
+    prev_repetitions: currentState.repetitions,
+    prev_due_date: existingReview?.dueDate ?? null,
+    prev_last_reviewed_at: existingReview?.lastReviewedAt ?? null,
+    next_status: nextState.status,
+    next_ease_factor: nextState.easeFactor,
+    next_interval: nextState.interval,
+    next_repetitions: nextState.repetitions,
+    next_due_date: nextState.dueDate,
+    reviewed_at: nextState.lastReviewedAt,
+  });
+
+  if (logError) {
+    console.error('Review saved but its log was not written; undo unavailable for this rating:', logError);
+  }
+
+  return savedReview;
+}
+
+export interface UndoResult {
+  cardId: string;
+  /** Null when the undone rating was the card's first one: it is new again. */
+  review: CardReview | null;
+}
+
+interface ReviewLogRow {
+  id: string;
+  card_id: string;
+  prev_status: ReviewStatus;
+  prev_ease_factor: number | string;
+  prev_interval: number;
+  prev_repetitions: number;
+  prev_due_date: string | null;
+  prev_last_reviewed_at: string | null;
+}
+
+/**
+ * Reverts the newest non-undone rating in a deck and marks it undone.
+ * Returns null when there is nothing to undo.
+ */
+export async function undoLastReview(
+  userId: string,
+  deckId: string,
+  now: Date = new Date(),
+): Promise<UndoResult | null> {
+  const { data, error } = await supabase
+    .from('review_logs')
+    .select('id, card_id, prev_status, prev_ease_factor, prev_interval, prev_repetitions, prev_due_date, prev_last_reviewed_at')
+    .eq('user_id', userId)
+    .eq('deck_id', deckId)
+    .is('undone_at', null)
+    .order('reviewed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const log = data as ReviewLogRow;
+  const wasFirstReview = log.prev_status === 'new';
+
+  if (wasFirstReview) {
+    const { error: deleteError } = await supabase
+      .from('card_reviews')
+      .delete()
+      .eq('user_id', userId)
+      .eq('deck_id', deckId)
+      .eq('card_id', log.card_id);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+  } else {
+    const { error: restoreError } = await supabase
+      .from('card_reviews')
+      .upsert(
+        {
+          user_id: userId,
+          deck_id: deckId,
+          card_id: log.card_id,
+          status: log.prev_status,
+          ease_factor: Number(log.prev_ease_factor),
+          interval: log.prev_interval,
+          repetitions: log.prev_repetitions,
+          due_date: log.prev_due_date ?? now.toISOString(),
+          last_reviewed_at: log.prev_last_reviewed_at,
+        },
+        { onConflict: 'user_id,deck_id,card_id' },
+      );
+
+    if (restoreError) {
+      throw restoreError;
+    }
+  }
+
+  const { error: markError } = await supabase
+    .from('review_logs')
+    .update({ undone_at: now.toISOString() })
+    .eq('id', log.id)
+    .eq('user_id', userId);
+
+  if (markError) {
+    throw markError;
+  }
+
+  return {
+    cardId: log.card_id,
+    review: wasFirstReview
+      ? null
+      : {
+          id: '',
+          userId,
+          deckId,
+          cardId: log.card_id,
+          status: log.prev_status,
+          easeFactor: Number(log.prev_ease_factor),
+          interval: log.prev_interval,
+          repetitions: log.prev_repetitions,
+          dueDate: log.prev_due_date ?? now.toISOString(),
+          lastReviewedAt: log.prev_last_reviewed_at,
+          createdAt: now.toISOString(),
+        },
+  };
 }
 
 function currentTimeZone(): string {

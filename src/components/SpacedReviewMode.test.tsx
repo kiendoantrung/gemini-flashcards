@@ -17,6 +17,7 @@ vi.mock('../services/spacedRepetitionService', async (importOriginal) => {
     ),
     getDueCards: vi.fn(),
     reviewCard: vi.fn(),
+    undoLastReview: vi.fn(),
   };
 });
 
@@ -388,5 +389,106 @@ describe('SpacedReviewMode session flow', () => {
 
     // Reaches summary on successful retry
     expect(await screen.findByText(/1 cards? reviewed/i)).toBeInTheDocument();
+  });
+
+  describe('undo', () => {
+    it('hides the undo affordance until something has been rated', async () => {
+      vi.mocked(spacedService.getDueCards).mockResolvedValue([
+        { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
+      ]);
+
+      const user = userEvent.setup();
+      render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
+
+      await screen.findByText('Hola');
+      expect(screen.queryByRole('button', { name: /^undo$/i })).not.toBeInTheDocument();
+
+      await user.click(screen.getByText('Hola'));
+      await user.click(screen.getByRole('button', { name: /good/i }));
+
+      expect(await screen.findByRole('button', { name: /undo last rating/i })).toBeInTheDocument();
+    });
+
+    it('reverts the last rating from the summary screen and returns to the card', async () => {
+      vi.mocked(spacedService.getDueCards).mockResolvedValue([
+        { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
+      ]);
+      vi.mocked(spacedService.reviewCard).mockResolvedValue({} as CardReview);
+      vi.mocked(spacedService.undoLastReview).mockResolvedValue({ cardId: 'c-1', review: null });
+
+      const user = userEvent.setup();
+      render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
+
+      await user.click(await screen.findByText('Hola'));
+      await user.click(screen.getByRole('button', { name: /good/i }));
+      expect(await screen.findByText(/1 cards? reviewed/i)).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /undo last rating/i }));
+
+      expect(spacedService.undoLastReview).toHaveBeenCalledWith('user-1', 'deck-1');
+      // Back on the card, with the counters rolled back.
+      expect(await screen.findByText('Hola')).toBeInTheDocument();
+      expect(screen.getByRole('progressbar', { name: /review progress/i })).toHaveAttribute('aria-valuenow', '0');
+      expect(screen.queryByText(/session complete/i)).not.toBeInTheDocument();
+    });
+
+    it('undoes from the session top bar and steps back one card', async () => {
+      vi.mocked(spacedService.getDueCards).mockResolvedValue([
+        { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
+        { card: { id: 'c-2', front: 'Gracias', back: 'Thank you' }, review: null },
+      ]);
+      vi.mocked(spacedService.reviewCard).mockResolvedValue({} as CardReview);
+      vi.mocked(spacedService.undoLastReview).mockResolvedValue({ cardId: 'c-1', review: null });
+
+      const user = userEvent.setup();
+      render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
+
+      await user.click(await screen.findByText('Hola'));
+      await user.click(screen.getByRole('button', { name: /good/i }));
+
+      expect(await screen.findByText('Gracias')).toBeInTheDocument();
+      expect(screen.getByText(/card 2 of 2/i)).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /^undo$/i }));
+
+      expect(await screen.findByText('Hola')).toBeInTheDocument();
+      expect(screen.getByText(/card 1 of 2/i)).toBeInTheDocument();
+      expect(screen.getByRole('progressbar', { name: /review progress/i })).toHaveAttribute('aria-valuenow', '0');
+    });
+
+    it('resyncs from the server when the log is already gone', async () => {
+      vi.mocked(spacedService.getDueCards)
+        .mockResolvedValueOnce([{ card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null }])
+        .mockResolvedValueOnce([]);
+      vi.mocked(spacedService.reviewCard).mockResolvedValue({} as CardReview);
+      vi.mocked(spacedService.undoLastReview).mockResolvedValue(null);
+
+      const user = userEvent.setup();
+      render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
+
+      await user.click(await screen.findByText('Hola'));
+      await user.click(screen.getByRole('button', { name: /good/i }));
+      await user.click(await screen.findByRole('button', { name: /undo last rating/i }));
+
+      expect(await screen.findByText(/no cards are due/i)).toBeInTheDocument();
+      expect(spacedService.getDueCards).toHaveBeenCalledTimes(2);
+    });
+
+    it('surfaces an error when the undo call fails', async () => {
+      vi.mocked(spacedService.getDueCards).mockResolvedValue([
+        { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
+      ]);
+      vi.mocked(spacedService.reviewCard).mockResolvedValue({} as CardReview);
+      vi.mocked(spacedService.undoLastReview).mockRejectedValue(new Error('Network error'));
+
+      const user = userEvent.setup();
+      render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
+
+      await user.click(await screen.findByText('Hola'));
+      await user.click(screen.getByRole('button', { name: /good/i }));
+      await user.click(await screen.findByRole('button', { name: /undo last rating/i }));
+
+      expect(await screen.findByText(/failed to undo/i)).toBeInTheDocument();
+    });
   });
 });

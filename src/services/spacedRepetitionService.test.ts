@@ -7,6 +7,7 @@ import {
   reviewCard,
   getDeckProgress,
   getDeckProgressBatch,
+  undoLastReview,
 } from './spacedRepetitionService';
 import { supabase } from '../lib/supabase';
 
@@ -387,6 +388,8 @@ describe('Supabase review persistence and queries', () => {
       error: null,
     });
 
+    const mockLogInsert = vi.fn().mockResolvedValue({ error: null });
+
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'card_reviews') {
         return {
@@ -405,6 +408,9 @@ describe('Supabase review persistence and queries', () => {
             }),
           }),
         } as unknown as ReturnType<typeof supabase.from>;
+      }
+      if (table === 'review_logs') {
+        return { insert: mockLogInsert } as unknown as ReturnType<typeof supabase.from>;
       }
       return {} as unknown as ReturnType<typeof supabase.from>;
     });
@@ -425,6 +431,72 @@ describe('Supabase review persistence and queries', () => {
       },
       { onConflict: 'user_id,deck_id,card_id' },
     );
+
+    // The log records both sides of the transition so undo can restore it.
+    expect(mockLogInsert).toHaveBeenCalledWith({
+      user_id: 'user-1',
+      deck_id: 'deck-1',
+      card_id: 'card-1',
+      quality: 3,
+      prev_status: existingRow.status,
+      prev_ease_factor: Number(existingRow.ease_factor),
+      prev_interval: existingRow.interval,
+      prev_repetitions: existingRow.repetitions,
+      prev_due_date: existingRow.due_date,
+      prev_last_reviewed_at: existingRow.last_reviewed_at,
+      next_status: 'review',
+      next_ease_factor: 2.5,
+      next_interval: 1,
+      next_repetitions: 1,
+      next_due_date: '2026-08-30T12:00:00.000Z',
+      reviewed_at: '2026-08-29T12:00:00.000Z',
+    });
+  });
+
+  it('still saves the review when the log write fails', async () => {
+    const savedRow = {
+      id: 'rev-1',
+      user_id: 'user-1',
+      deck_id: 'deck-1',
+      card_id: 'card-1',
+      status: 'review',
+      ease_factor: 2.5,
+      interval: 1,
+      repetitions: 1,
+      due_date: '2026-08-30T12:00:00.000Z',
+      last_reviewed_at: '2026-08-29T12:00:00.000Z',
+      created_at: '2026-08-28T10:00:00.000Z',
+    };
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'card_reviews') {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }),
+              }),
+            }),
+          }),
+          upsert: () => ({
+            select: () => ({ single: () => Promise.resolve({ data: savedRow, error: null }) }),
+          }),
+        } as unknown as ReturnType<typeof supabase.from>;
+      }
+      return {
+        insert: () => Promise.resolve({ error: new Error('review_logs unavailable') }),
+      } as unknown as ReturnType<typeof supabase.from>;
+    });
+
+    const result = await reviewCard('user-1', 'deck-1', 'card-1', 3, now);
+
+    expect(result.interval).toBe(1);
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining('undo unavailable'),
+      expect.anything(),
+    );
+    consoleError.mockRestore();
   });
 
   it('calculates deck progress buckets correctly', async () => {
@@ -721,6 +793,132 @@ describe('Supabase review persistence and queries', () => {
     expect(progress).toEqual({
       'deck-a': { new: 1, learning: 0, due: 1, mastered: 0, done: 0 },
       'deck-b': { new: 0, learning: 1, due: 1, mastered: 0, done: 0 },
+    });
+  });
+
+  describe('undo', () => {
+    interface LogFixture {
+      id: string;
+      card_id: string;
+      prev_status: string;
+      prev_ease_factor: number;
+      prev_interval: number;
+      prev_repetitions: number;
+      prev_due_date: string | null;
+      prev_last_reviewed_at: string | null;
+    }
+
+    const logRow: LogFixture = {
+      id: 'log-1',
+      card_id: 'card-1',
+      prev_status: 'review',
+      prev_ease_factor: 2.36,
+      prev_interval: 6,
+      prev_repetitions: 2,
+      prev_due_date: '2026-09-04T12:00:00.000Z',
+      prev_last_reviewed_at: '2026-08-29T12:00:00.000Z',
+    };
+
+    /**
+     * Wires `from()` for both tables used by undo. `review_logs` needs two
+     * shapes (select for the newest log, update to mark it undone), so the
+     * returned object carries both.
+     */
+    function mockUndoTables(data: LogFixture | null) {
+      const markUndone = vi.fn().mockResolvedValue({ error: null });
+      const updateEqUser = vi.fn().mockReturnValue({ eq: markUndone });
+      const updateEqId = vi.fn().mockReturnValue({ eq: updateEqUser });
+      const update = vi.fn().mockReturnValue({ eq: updateEqId });
+
+      const maybeSingle = vi.fn().mockResolvedValue({ data, error: null });
+      const limit = vi.fn().mockReturnValue({ maybeSingle });
+      const order = vi.fn().mockReturnValue({ limit });
+      const is = vi.fn().mockReturnValue({ order });
+      const logsEqDeck = vi.fn().mockReturnValue({ is });
+      const logsEqUser = vi.fn().mockReturnValue({ eq: logsEqDeck });
+      const select = vi.fn().mockReturnValue({ eq: logsEqUser });
+
+      const deleteCard = vi.fn().mockResolvedValue({ error: null });
+      const deleteDeck = vi.fn().mockReturnValue({ eq: deleteCard });
+      const deleteUser = vi.fn().mockReturnValue({ eq: deleteDeck });
+      const remove = vi.fn().mockReturnValue({ eq: deleteUser });
+      const upsert = vi.fn().mockResolvedValue({ error: null });
+
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'review_logs') {
+          return { select, update } as unknown as ReturnType<typeof supabase.from>;
+        }
+        if (table === 'card_reviews') {
+          return { delete: remove, upsert } as unknown as ReturnType<typeof supabase.from>;
+        }
+        return {} as unknown as ReturnType<typeof supabase.from>;
+      });
+
+      return { update, markUndone, remove, upsert, maybeSingle, order, limit };
+    }
+
+    it('deletes the review row when undoing a card’s first rating', async () => {
+      const mocks = mockUndoTables({ ...logRow, prev_status: 'new', prev_interval: 0, prev_repetitions: 0, prev_due_date: null, prev_last_reviewed_at: null });
+
+      const result = await undoLastReview('user-1', 'deck-1', now);
+
+      expect(result).toEqual({ cardId: 'card-1', review: null });
+      expect(mocks.remove).toHaveBeenCalledTimes(1);
+      expect(mocks.upsert).not.toHaveBeenCalled();
+      expect(mocks.update).toHaveBeenCalledWith({ undone_at: now.toISOString() });
+    });
+
+    it('restores the previous SM-2 state when undoing a later rating', async () => {
+      const mocks = mockUndoTables(logRow);
+
+      const result = await undoLastReview('user-1', 'deck-1', now);
+
+      expect(mocks.remove).not.toHaveBeenCalled();
+      expect(mocks.upsert).toHaveBeenCalledWith(
+        {
+          user_id: 'user-1',
+          deck_id: 'deck-1',
+          card_id: 'card-1',
+          status: 'review',
+          ease_factor: 2.36,
+          interval: 6,
+          repetitions: 2,
+          due_date: '2026-09-04T12:00:00.000Z',
+          last_reviewed_at: '2026-08-29T12:00:00.000Z',
+        },
+        { onConflict: 'user_id,deck_id,card_id' },
+      );
+      expect(result?.review).toMatchObject({
+        cardId: 'card-1',
+        status: 'review',
+        easeFactor: 2.36,
+        interval: 6,
+        repetitions: 2,
+        dueDate: '2026-09-04T12:00:00.000Z',
+      });
+      expect(mocks.update).toHaveBeenCalledWith({ undone_at: now.toISOString() });
+    });
+
+    it('returns null and writes nothing when no log is pending', async () => {
+      const mocks = mockUndoTables(null);
+
+      const result = await undoLastReview('user-1', 'deck-1', now);
+
+      expect(result).toBeNull();
+      expect(supabase.from).toHaveBeenCalledTimes(1);
+      expect(supabase.from).toHaveBeenCalledWith('review_logs');
+      expect(mocks.update).not.toHaveBeenCalled();
+      expect(mocks.remove).not.toHaveBeenCalled();
+      expect(mocks.upsert).not.toHaveBeenCalled();
+    });
+
+    it('only looks at the newest non-undone log', async () => {
+      const mocks = mockUndoTables(logRow);
+
+      await undoLastReview('user-1', 'deck-1', now);
+
+      expect(mocks.order).toHaveBeenCalledWith('reviewed_at', { ascending: false });
+      expect(mocks.limit).toHaveBeenCalledWith(1);
     });
   });
 });
