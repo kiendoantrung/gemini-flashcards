@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, RotateCcw, Sparkles, Undo2 } from 'lucide-react';
 import type { Deck } from '../types/flashcard';
 import { FlashCard } from './FlashCard';
 import { LoadingSpinner } from './LoadingSpinner';
@@ -8,6 +8,7 @@ import {
   formatNextInterval,
   getDueCards,
   reviewCard,
+  undoLastReview,
   type DueCard,
   type ReviewQuality,
   type ReviewState,
@@ -17,6 +18,17 @@ export interface SpacedReviewModeProps {
   deck: Deck;
   userId: string;
   onExit: () => void;
+}
+
+/** Everything needed to put the session back the way it was before a rating. */
+interface RatedAction {
+  cardId: string;
+  quality: ReviewQuality;
+  indexBefore: number;
+  queueLengthBefore: number;
+  wasCompleted: boolean;
+  previousAgainCount: number;
+  previousFinalRating: ReviewQuality | undefined;
 }
 
 const RATING_BUTTONS: Array<{
@@ -71,6 +83,7 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
   // Latest rating per card, so the summary counts cards rather than rating
   // events (an Again card that is later rated Easy is one card, not two).
   const [finalRatingByCard, setFinalRatingByCard] = useState<Record<string, ReviewQuality>>({});
+  const [ratedActions, setRatedActions] = useState<RatedAction[]>([]);
 
   const fetchDueCards = useCallback(async () => {
     if (!userId || !deck.id) return;
@@ -85,6 +98,7 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
       setAgainCounts({});
       setRatings({ 1: 0, 2: 0, 3: 0, 4: 0 });
       setFinalRatingByCard({});
+      setRatedActions([]);
       setIsFlipped(false);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load due cards';
@@ -123,6 +137,15 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
   const handleRate = async (quality: ReviewQuality) => {
     if (isSubmitting || currentIndex >= queue.length) return;
     const currentItem = queue[currentIndex];
+    const action: RatedAction = {
+      cardId: currentItem.card.id,
+      quality,
+      indexBefore: currentIndex,
+      queueLengthBefore: queue.length,
+      wasCompleted: completedCardIds.has(currentItem.card.id),
+      previousAgainCount: againCounts[currentItem.card.id] ?? 0,
+      previousFinalRating: finalRatingByCard[currentItem.card.id],
+    };
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -148,11 +171,80 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
         [quality]: prev[quality] + 1,
       }));
       setFinalRatingByCard((prev) => ({ ...prev, [currentItem.card.id]: quality }));
+      setRatedActions((prev) => [...prev, action]);
 
       setIsFlipped(false);
       setCurrentIndex((prev) => prev + 1);
     } catch {
       setSubmitError('Failed to save review. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUndo = async () => {
+    if (isSubmitting || ratedActions.length === 0) return;
+    const action = ratedActions[ratedActions.length - 1];
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const restored = await undoLastReview(userId, deck.id);
+
+      if (!restored) {
+        // The log is gone (another tab already undid it). Resync instead of
+        // pretending the local state is still valid.
+        setRatedActions([]);
+        await fetchDueCards();
+        return;
+      }
+
+      if (restored.cardId !== action.cardId) {
+        await fetchDueCards();
+        return;
+      }
+
+      setQueue((prev) =>
+        prev
+          .slice(0, action.queueLengthBefore)
+          .map((item, index) => (index === action.indexBefore ? { ...item, review: restored.review } : item)),
+      );
+      setCurrentIndex(action.indexBefore);
+      setCompletedCardIds((prev) => {
+        const next = new Set(prev);
+        if (action.wasCompleted) {
+          next.add(action.cardId);
+        } else {
+          next.delete(action.cardId);
+        }
+        return next;
+      });
+      setRatings((prev) => ({
+        ...prev,
+        [action.quality]: Math.max(0, prev[action.quality] - 1),
+      }));
+      setFinalRatingByCard((prev) => {
+        const next = { ...prev };
+        if (action.previousFinalRating === undefined) {
+          delete next[action.cardId];
+        } else {
+          next[action.cardId] = action.previousFinalRating;
+        }
+        return next;
+      });
+      setAgainCounts((prev) => {
+        const next = { ...prev };
+        if (action.previousAgainCount === 0) {
+          delete next[action.cardId];
+        } else {
+          next[action.cardId] = action.previousAgainCount;
+        }
+        return next;
+      });
+      setRatedActions((prev) => prev.slice(0, -1));
+      setIsFlipped(false);
+    } catch {
+      setSubmitError('Failed to undo. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -260,12 +352,33 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
           </div>
         </div>
 
-        <button
-          onClick={onExit}
-          className="px-8 py-3.5 bg-duo-green text-white font-black text-base rounded-2xl shadow-duo-button hover:bg-duo-green-hover transition-all"
-        >
-          Back to Dashboard
-        </button>
+        {submitError && (
+          <div
+            role="alert"
+            className="mb-4 p-3 bg-rose-50 border-2 border-rose-300 rounded-2xl text-rose-800 text-sm font-bold text-center"
+          >
+            {submitError}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {ratedActions.length > 0 && (
+            <button
+              onClick={() => void handleUndo()}
+              disabled={isSubmitting}
+              className="inline-flex items-center gap-2 px-6 py-3.5 bg-white text-duo-charcoal font-black text-base rounded-2xl border-2 border-duo-border hover:bg-duo-paper transition-all disabled:opacity-50"
+            >
+              <Undo2 className="w-5 h-5" />
+              Undo last rating
+            </button>
+          )}
+          <button
+            onClick={onExit}
+            className="px-8 py-3.5 bg-duo-green text-white font-black text-base rounded-2xl shadow-duo-button hover:bg-duo-green-hover transition-all"
+          >
+            Back to Dashboard
+          </button>
+        </div>
       </div>
     );
   }
@@ -304,20 +417,35 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
           Back to Dashboard
         </button>
 
-        <div className="text-right">
-          <h2 className="text-lg font-heading font-black text-duo-charcoal">
-            Spaced Review: {deck.title}
-          </h2>
-          <span className="text-xs font-extrabold text-duo-pencil">
-            Card {currentIndex + 1} of {queue.length}
-          </span>
+        <div className="flex items-center gap-2">
+          {ratedActions.length > 0 && (
+            <button
+              onClick={() => void handleUndo()}
+              disabled={isSubmitting}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-extrabold text-duo-pencil hover:text-duo-charcoal hover:bg-white rounded-xl border-2 border-transparent hover:border-duo-border transition-all disabled:opacity-50"
+            >
+              <Undo2 className="w-4 h-4" />
+              Undo
+            </button>
+          )}
+          <div className="text-right">
+            <h2 className="text-lg font-heading font-black text-duo-charcoal">
+              Spaced Review: {deck.title}
+            </h2>
+            <span className="text-xs font-extrabold text-duo-pencil">
+              Card {currentIndex + 1} of {queue.length}
+            </span>
+          </div>
         </div>
       </div>
 
       {progressBar}
 
       {submitError && (
-        <div className="mb-4 p-3 bg-rose-50 border-2 border-rose-300 rounded-2xl text-rose-800 text-sm font-bold text-center">
+        <div
+          role="alert"
+          className="mb-4 p-3 bg-rose-50 border-2 border-rose-300 rounded-2xl text-rose-800 text-sm font-bold text-center"
+        >
           {submitError}
         </div>
       )}
