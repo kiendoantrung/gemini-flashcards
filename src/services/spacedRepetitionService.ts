@@ -252,11 +252,11 @@ export async function getDueCards(
   // this, reopening the deck would hand out another 20 unseen cards and let a
   // user burn through a large deck in one sitting.
   const cardIds = new Set(allCards.map((card) => card.id));
-  const todayKey = localDayKey(now, timeZone);
+  const todayKey = studyDayKey(now, timeZone);
   const introducedToday = rows.filter(
     (row) =>
       cardIds.has(row.card_id) &&
-      localDayKey(new Date(row.created_at), timeZone) === todayKey,
+      studyDayKey(new Date(row.created_at), timeZone) === todayKey,
   ).length;
   const remainingNewBudget = Math.max(0, DAILY_NEW_CARD_LIMIT - introducedToday);
 
@@ -528,7 +528,7 @@ function formatterFor(timeZone: string, withTime: boolean): Intl.DateTimeFormat 
  * across a DST transition, and the two timestamps being compared can sit on
  * different sides of it.
  */
-function localDayKey(date: Date, timeZone: string): string {
+export function studyDayKey(date: Date, timeZone: string): string {
   const shifted = new Date(date.getTime() - DAY_ROLLOVER_HOUR * HOUR_MS);
   const parts = formatterFor(timeZone, false).formatToParts(shifted);
 
@@ -559,7 +559,7 @@ function timeZoneOffsetMs(date: Date, timeZone: string): number {
 }
 
 /** Adds whole calendar days to a YYYY-MM-DD key. */
-function addDaysToDayKey(dayKey: string, days: number): string {
+export function addDaysToDayKey(dayKey: string, days: number): string {
   const [year, month, day] = dayKey.split('-').map(Number);
   const shifted = new Date(Date.UTC(year, month - 1, day));
   shifted.setUTCDate(shifted.getUTCDate() + days);
@@ -588,7 +588,7 @@ function dayStartForKey(dayKey: string, timeZone: string): Date {
  * drift out of their study window one day at a time.
  */
 function dueDateFor(now: Date, interval: number, timeZone: string): string {
-  const targetKey = addDaysToDayKey(localDayKey(now, timeZone), interval);
+  const targetKey = addDaysToDayKey(studyDayKey(now, timeZone), interval);
   return dayStartForKey(targetKey, timeZone).toISOString();
 }
 
@@ -623,7 +623,7 @@ function countProgress(
   let doneCount = 0;
 
   const nowTime = now.getTime();
-  const todayKey = localDayKey(now, timeZone);
+  const todayKey = studyDayKey(now, timeZone);
 
   for (const review of relevantReviews) {
     if (review.status === 'learning' || review.status === 'relearning') {
@@ -642,7 +642,7 @@ function countProgress(
     if (
       review.lastReviewedAt &&
       dueTime > nowTime &&
-      localDayKey(new Date(review.lastReviewedAt), timeZone) === todayKey
+      studyDayKey(new Date(review.lastReviewedAt), timeZone) === todayKey
     ) {
       doneCount++;
     }

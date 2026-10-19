@@ -71,7 +71,7 @@ describe('DeckList spaced review actions and progress counters', () => {
       <DeckList
         decks={[deck]}
         deckProgressById={{
-          'deck-1': { new: 2, learning: 0, due: 3, mastered: 0, done: 4 },
+          'deck-1': { new: 2, learning: 1, due: 3, mastered: 5, done: 4 },
         }}
         onStartSpacedReview={onStartSpacedReview}
         onSelectDeck={onSelectDeck}
@@ -83,8 +83,10 @@ describe('DeckList spaced review actions and progress counters', () => {
     );
 
     expect(screen.getByText(/2\s*new/i)).toBeInTheDocument();
+    expect(screen.getByText(/1\s*learning/i)).toBeInTheDocument();
     expect(screen.getByText(/3\s*due/i)).toBeInTheDocument();
     expect(screen.getByText(/4\s*done/i)).toBeInTheDocument();
+    expect(screen.getByText(/5\s*mastered/i)).toBeInTheDocument();
 
     const spacedReviewBtn = screen.getByRole('button', { name: /spaced review/i });
     await user.click(spacedReviewBtn);

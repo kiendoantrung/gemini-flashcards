@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense } from 'react';
+import { BarChart3 } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import type { Deck, DeckProgress } from '../types/flashcard';
 import { AppHeader } from './AppHeader';
@@ -15,6 +16,9 @@ const EditDeckPage = lazy(() =>
 );
 const SpacedReviewMode = lazy(() =>
   import('./SpacedReviewMode').then((module) => ({ default: module.SpacedReviewMode }))
+);
+const StatsPage = lazy(() =>
+  import('./StatsPage').then((module) => ({ default: module.StatsPage }))
 );
 
 interface AuthenticatedAppViewProps {
@@ -58,6 +62,7 @@ export function AuthenticatedAppView({
 }: AuthenticatedAppViewProps) {
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [isCreateDeckModalOpen, setIsCreateDeckModalOpen] = useState(false);
+  const [showStats, setShowStats] = useState(false);
 
   return (
     <div className="min-h-screen bg-duo-paper flex flex-col">
@@ -105,6 +110,14 @@ export function AuthenticatedAppView({
           </Suspense>
         ) : selectedDeck ? (
           <StudyMode deck={selectedDeck} onExit={onExitStudyMode} />
+        ) : showStats ? (
+          <Suspense fallback={<LoadingSpinner />}>
+            <StatsPage
+              userId={user?.id ?? ''}
+              decks={decks}
+              onBack={() => setShowStats(false)}
+            />
+          </Suspense>
         ) : (
           <>
             <div className="mb-10 text-center">
@@ -117,6 +130,14 @@ export function AuthenticatedAppView({
               <p className="text-duo-pencil text-base md:text-lg max-w-xl mx-auto mt-2 font-medium">
                 Manage your flashcard decks and track your mastery.
               </p>
+              <button
+                type="button"
+                onClick={() => setShowStats(true)}
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-extrabold text-duo-charcoal bg-white border-2 border-duo-border rounded-2xl hover:border-duo-green hover:bg-duo-green-subtle/30 transition-all"
+              >
+                <BarChart3 className="w-4 h-4" />
+                Statistics
+              </button>
             </div>
 
             <CreateDeckModal
