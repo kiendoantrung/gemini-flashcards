@@ -314,10 +314,13 @@ describe('SpacedReviewMode session flow', () => {
     await user.click(await screen.findByRole('button', { name: /easy/i }));
 
     // Summary
-    expect(await screen.findByText(/3 cards? reviewed/i)).toBeInTheDocument();
+    // Summary counts cards, not rating events: Hola (Again then Easy) is one card.
+    expect(await screen.findByText(/2 cards? reviewed/i)).toBeInTheDocument();
     expect(screen.getByText(/again:\s*1/i)).toBeInTheDocument();
     expect(screen.getByText(/good:\s*1/i)).toBeInTheDocument();
     expect(screen.getByText(/easy:\s*1/i)).toBeInTheDocument();
+    // Both cards ended on a passing grade, so retention is per card, not per event.
+    expect(screen.getByText(/retention:\s*100%/i)).toBeInTheDocument();
   });
 
   it('uses the persisted review state when an Again card is requeued', async () => {

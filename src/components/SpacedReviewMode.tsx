@@ -68,7 +68,9 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
     3: 0,
     4: 0,
   });
-  const [totalReviewed, setTotalReviewed] = useState(0);
+  // Latest rating per card, so the summary counts cards rather than rating
+  // events (an Again card that is later rated Easy is one card, not two).
+  const [finalRatingByCard, setFinalRatingByCard] = useState<Record<string, ReviewQuality>>({});
 
   const fetchDueCards = useCallback(async () => {
     if (!userId || !deck.id) return;
@@ -82,7 +84,7 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
       setCompletedCardIds(new Set());
       setAgainCounts({});
       setRatings({ 1: 0, 2: 0, 3: 0, 4: 0 });
-      setTotalReviewed(0);
+      setFinalRatingByCard({});
       setIsFlipped(false);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load due cards';
@@ -145,7 +147,7 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
         ...prev,
         [quality]: prev[quality] + 1,
       }));
-      setTotalReviewed((prev) => prev + 1);
+      setFinalRatingByCard((prev) => ({ ...prev, [currentItem.card.id]: quality }));
 
       setIsFlipped(false);
       setCurrentIndex((prev) => prev + 1);
@@ -211,8 +213,9 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
   }
 
   if (isCompleted) {
-    const successfulCount = ratings[2] + ratings[3] + ratings[4];
-    const retentionRate = totalReviewed > 0 ? Math.round((successfulCount / totalReviewed) * 100) : 0;
+    const reviewedCardCount = Object.keys(finalRatingByCard).length;
+    const successfulCards = Object.values(finalRatingByCard).filter((quality) => quality !== 1).length;
+    const retentionRate = reviewedCardCount > 0 ? Math.round((successfulCards / reviewedCardCount) * 100) : 0;
 
     return (
       <div className="max-w-2xl mx-auto p-8 md:p-10 bg-white border-2 border-duo-border rounded-3xl shadow-duo-card text-center">
@@ -226,7 +229,7 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
           Spaced Review: {deck.title}
         </h2>
         <p className="text-duo-pencil font-bold text-lg mb-6">
-          {totalReviewed} {totalReviewed === 1 ? 'card' : 'cards'} reviewed
+          {reviewedCardCount} {reviewedCardCount === 1 ? 'card' : 'cards'} reviewed
         </p>
         {progressBar}
 
