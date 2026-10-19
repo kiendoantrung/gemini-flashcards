@@ -28,3 +28,11 @@ package-lock.json
 supabase/.temp/
 .worktrees/
 .superpowers/
+
+# Agent tooling artifacts
+.workbuddy-ai/
+.workbuddy/
+.agents/
+
+# TypeScript incremental build info
+*.tsbuildinfo
