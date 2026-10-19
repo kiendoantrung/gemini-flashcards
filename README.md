@@ -67,6 +67,16 @@ During a Spaced Review session, cards are flipped to reveal the answer, and user
 | **Good** | 3 | Recalled normally; ease factor unchanged. Interval expands by the deck's ease factor. |
 | **Easy** | 4 | Recalled effortlessly; ease factor increases by 0.15. Interval expands with a 1.3x bonus. |
 
+### Interval Ceiling and Fuzz
+
+Ease is capped at **3.0** and the interval at **365 days**, so a card answered Easy
+repeatedly cannot drift out to multi-year gaps.
+
+Intervals of 2 days or more are then randomised by up to **5%** (at least one day)
+when they are saved, so cards learned on the same day do not come due as one clump
+forever. The rating buttons show the un-fuzzed interval; only the stored schedule is
+jittered.
+
 ### Day Boundary
 
 The study day rolls over at **04:00 local time**, not midnight. Reviewing at 01:00

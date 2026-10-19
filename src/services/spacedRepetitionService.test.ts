@@ -8,6 +8,7 @@ import {
   getDeckProgress,
   getDeckProgressBatch,
   undoLastReview,
+  type ReviewState,
 } from './spacedRepetitionService';
 import { supabase } from '../lib/supabase';
 
@@ -127,6 +128,25 @@ describe('four-grade spaced repetition calculation', () => {
       interval: 0,
       easeFactor: 1.3,
     });
+  });
+
+  it('stops raising ease at the 3.0 ceiling', () => {
+    let state: ReviewState = { status: 'review', repetitions: 3, interval: 10, easeFactor: 2.9 };
+
+    for (let review = 0; review < 5; review += 1) {
+      state = calculateNextReview(state, 4, now, 'UTC');
+    }
+
+    // 2.9 + 0.15 would be 3.05 on the first Easy; it must clamp, not drift.
+    expect(state.easeFactor).toBe(3);
+  });
+
+  it('caps the interval at one year', () => {
+    const mature = { status: 'review' as const, repetitions: 5, interval: 300, easeFactor: 3 };
+
+    // 300 x 3 x 1.3 would be 1170 days.
+    expect(calculateNextReview(mature, 4, now, 'UTC').interval).toBe(365);
+    expect(calculateNextReview(mature, 3, now, 'UTC').interval).toBe(365);
   });
 
   it('formats next interval predictions correctly', () => {
@@ -549,6 +569,101 @@ describe('Supabase review persistence and queries', () => {
       expect.anything(),
     );
     consoleError.mockRestore();
+  });
+
+  describe('interval fuzz', () => {
+    const existingRow = {
+      id: 'rev-1',
+      user_id: 'user-1',
+      deck_id: 'deck-1',
+      card_id: 'card-1',
+      status: 'review',
+      ease_factor: 2.5,
+      interval: 4,
+      repetitions: 3,
+      due_date: '2026-09-01T04:00:00.000Z',
+      last_reviewed_at: '2026-08-28T10:00:00.000Z',
+      created_at: '2026-08-20T10:00:00.000Z',
+    };
+
+    function mockReviewWith(existing: Record<string, unknown> | null) {
+      const upsert = vi.fn().mockReturnThis();
+      const upsertSelect = vi.fn().mockReturnThis();
+      const upsertSingle = vi.fn().mockResolvedValue({
+        data: { ...existingRow, ...(existing ?? {}) },
+        error: null,
+      });
+      const logInsert = vi.fn().mockResolvedValue({ error: null });
+
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'card_reviews') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  eq: () => ({ maybeSingle: () => Promise.resolve({ data: existing, error: null }) }),
+                }),
+              }),
+            }),
+            upsert: upsert.mockReturnValue({
+              select: upsertSelect.mockReturnValue({ single: upsertSingle }),
+            }),
+          } as unknown as ReturnType<typeof supabase.from>;
+        }
+        return { insert: logInsert } as unknown as ReturnType<typeof supabase.from>;
+      });
+
+      return { upsert, logInsert };
+    }
+
+    it('spreads the persisted interval and moves the due date with it', async () => {
+      const { upsert, logInsert } = mockReviewWith(existingRow);
+      // Good on interval 4 at ease 2.5 gives 10 days; the fuzz spread is +/-1.
+
+      await reviewCard('user-1', 'deck-1', 'card-1', 3, now, 'UTC', () => 0);
+
+      expect(upsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({ interval: 9, due_date: '2026-09-07T04:00:00.000Z' }),
+        { onConflict: 'user_id,deck_id,card_id' },
+      );
+      // The log must agree with the row that was actually written.
+      expect(logInsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({ next_interval: 9, next_due_date: '2026-09-07T04:00:00.000Z' }),
+      );
+
+      await reviewCard('user-1', 'deck-1', 'card-1', 3, now, 'UTC', () => 0.99);
+
+      expect(upsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({ interval: 11, due_date: '2026-09-09T04:00:00.000Z' }),
+        { onConflict: 'user_id,deck_id,card_id' },
+      );
+    });
+
+    it('never fuzzes an interval below the threshold', async () => {
+      const freshCard = { ...existingRow, interval: 0, repetitions: 0, status: 'new' };
+      const { upsert } = mockReviewWith(freshCard);
+
+      // A 1-day interval: 5% would round to zero, so the value must be exact.
+      await reviewCard('user-1', 'deck-1', 'card-1', 3, now, 'UTC', () => 0.99);
+
+      expect(upsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({ interval: 1, due_date: '2026-08-30T04:00:00.000Z' }),
+        { onConflict: 'user_id,deck_id,card_id' },
+      );
+    });
+
+    it('does not let the fuzz push an interval past the one-year cap', async () => {
+      const mature = { ...existingRow, interval: 150, repetitions: 5, ease_factor: 3 };
+      const { upsert } = mockReviewWith(mature);
+
+      // Easy: 150 x 3 x 1.3 = 585, capped to 365. A +18 day fuzz would be 383.
+      await reviewCard('user-1', 'deck-1', 'card-1', 4, now, 'UTC', () => 0.99);
+
+      expect(upsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({ interval: 365 }),
+        { onConflict: 'user_id,deck_id,card_id' },
+      );
+    });
   });
 
   it('calculates deck progress buckets correctly', async () => {
