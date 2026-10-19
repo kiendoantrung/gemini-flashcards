@@ -8,7 +8,7 @@ const REVIEW_COLUMNS =
   'id, user_id, deck_id, card_id, status, ease_factor, interval, repetitions, due_date, last_reviewed_at, created_at';
 
 const MASTERED_INTERVAL_DAYS = 21;
-const NEW_CARD_LIMIT = 20;
+const DAILY_NEW_CARD_LIMIT = 20;
 
 const MIN_EASE_FACTOR = 1.3;
 const FIRST_INTERVAL_DAYS = 1;
@@ -127,6 +127,7 @@ export async function getDueCards(
   deckId: string,
   allCards: Flashcard[],
   now: Date = new Date(),
+  timeZone: string = currentTimeZone(),
 ): Promise<DueCard[]> {
   const { data, error } = await supabase
     .from('card_reviews')
@@ -169,9 +170,19 @@ export async function getDueCards(
   relearningDue.sort((a, b) => new Date(a.review!.dueDate).getTime() - new Date(b.review!.dueDate).getTime());
   reviewDue.sort((a, b) => new Date(a.review!.dueDate).getTime() - new Date(b.review!.dueDate).getTime());
 
-  // New cards are capped per session so a large deck does not dump every
-  // unseen card at once. Reviewed cards are never capped: due work comes first.
-  const sessionNewCards = newCards.slice(0, NEW_CARD_LIMIT);
+  // The new-card budget is per deck per local day, not per session: without
+  // this, reopening the deck would hand out another 20 unseen cards and let a
+  // user burn through a large deck in one sitting.
+  const cardIds = new Set(allCards.map((card) => card.id));
+  const todayKey = localDayKey(now, timeZone);
+  const introducedToday = rows.filter(
+    (row) =>
+      cardIds.has(row.card_id) &&
+      localDayKey(new Date(row.created_at), timeZone) === todayKey,
+  ).length;
+  const remainingNewBudget = Math.max(0, DAILY_NEW_CARD_LIMIT - introducedToday);
+
+  const sessionNewCards = newCards.slice(0, remainingNewBudget);
 
   return [...relearningDue, ...reviewDue, ...sessionNewCards];
 }
