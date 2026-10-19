@@ -4,7 +4,7 @@
   <p>Create, organize, and study AI-generated flashcards with Spaced Repetition (SM-2).</p>
 
   [![Build](https://img.shields.io/github/actions/workflow/status/kiendoantrung/gemini-flashcards/deploy.yml?branch=main&style=flat-square&label=Build)](https://github.com/kiendoantrung/gemini-flashcards/actions)
-  ![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-3c873a?style=flat-square&logo=node.js)
+  ![Node.js](https://img.shields.io/badge/Node.js-24-3c873a?style=flat-square&logo=node.js)
   [![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react&logoColor=20232a)](https://react.dev/)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 </div>
@@ -85,7 +85,7 @@ Upon completing a session, the app presents a summary report including:
 
 ### Prerequisites
 
-- [Node.js 20 or newer](https://nodejs.org/)
+- [Node.js 24](https://nodejs.org/)
 - npm
 - A [Supabase](https://supabase.com/) project
 - A [Google AI](https://ai.google.dev/) API key

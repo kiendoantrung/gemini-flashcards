@@ -3,7 +3,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import type { Deck, DeckProgress } from '../types/flashcard';
 import { supabase } from '../lib/supabase';
 import { getCurrentUser, logout as logoutService } from '../services/authService';
-import { getDeckProgress } from '../services/spacedRepetitionService';
+import { getDeckProgressBatch } from '../services/spacedRepetitionService';
 import {
   deleteDeck as deleteDeckService,
   getUserDecks,
@@ -52,13 +52,8 @@ export function useDashboardState(
       return;
     }
     try {
-      const progressEntries = await Promise.all(
-        currentDecks.map(async (deck) => {
-          const progress = await getDeckProgress(userId, deck.id, deck.cards.length);
-          return [deck.id, progress] as const;
-        })
-      );
-      setDeckProgressById(Object.fromEntries(progressEntries));
+      const progressById = await getDeckProgressBatch(userId, currentDecks);
+      setDeckProgressById(progressById);
     } catch (error) {
       console.error('Failed to load deck progress:', error);
     }

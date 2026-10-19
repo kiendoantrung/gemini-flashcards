@@ -5,15 +5,33 @@ import { RotateCw, Sparkles } from 'lucide-react';
 interface FlashCardProps {
   card: Flashcard;
   showAnswer?: boolean;
+  /**
+   * When provided, the card becomes controlled: the parent owns the flip state
+   * and this component only reports the intent. Without it the card keeps its
+   * own state, which is what StudyMode relies on.
+   */
+  onFlip?: () => void;
 }
 
-export function FlashCard({ card, showAnswer = false }: FlashCardProps) {
-  const [isFlipped, setIsFlipped] = useState(showAnswer);
+export function FlashCard({ card, showAnswer = false, onFlip }: FlashCardProps) {
+  const isControlled = onFlip !== undefined;
+  const [internalFlipped, setInternalFlipped] = useState(showAnswer);
+  const isFlipped = isControlled ? showAnswer : internalFlipped;
 
-  // Sync isFlipped state when showAnswer prop changes
+  // Sync the uncontrolled state when the parent drives showAnswer directly.
   useEffect(() => {
-    setIsFlipped(showAnswer);
-  }, [showAnswer]);
+    if (!isControlled) {
+      setInternalFlipped(showAnswer);
+    }
+  }, [showAnswer, isControlled]);
+
+  const toggle = () => {
+    if (isControlled) {
+      onFlip();
+    } else {
+      setInternalFlipped((prev) => !prev);
+    }
+  };
 
   return (
     <div
@@ -21,11 +39,11 @@ export function FlashCard({ card, showAnswer = false }: FlashCardProps) {
       aria-label={isFlipped ? `Answer: ${card.back}. Press to see question.` : `Question: ${card.front}. Press to see answer.`}
       tabIndex={0}
       className="relative w-full h-80 md:h-96 cursor-pointer perspective-1000 group focus:outline-none focus:ring-2 focus:ring-duo-green focus:ring-offset-2 rounded-2xl"
-      onClick={() => setIsFlipped(!isFlipped)}
+      onClick={toggle}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          setIsFlipped(!isFlipped);
+          toggle();
         }
       }}
     >
