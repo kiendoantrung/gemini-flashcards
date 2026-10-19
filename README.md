@@ -1,7 +1,7 @@
 <div align="center">
   <img src="./public/icon.png" alt="Gemini Flashcards icon" width="96" />
   <h1>Gemini Flashcards</h1>
-  <p>Create, organize, and study AI-generated flashcards with Spaced Repetition (SM-2).</p>
+  <p>Create, organize, and study AI-generated flashcards with Spaced Repetition (SM-2-style).</p>
 
   [![Build](https://img.shields.io/github/actions/workflow/status/kiendoantrung/gemini-flashcards/deploy.yml?branch=main&style=flat-square&label=Build)](https://github.com/kiendoantrung/gemini-flashcards/actions)
   ![Node.js](https://img.shields.io/badge/Node.js-24-3c873a?style=flat-square&logo=node.js)
@@ -12,13 +12,13 @@
 Gemini Flashcards is a React and TypeScript study app backed by Supabase. It
 can generate decks from a topic, extract content from documents, turn
 question-and-answer files into study-ready cards, and schedule long-term memory
-reviews with the SM-2 Spaced Repetition algorithm.
+reviews with an SM-2-inspired spaced repetition scheduler.
 
 ## Contents
 
 - [Features](#features)
 - [Architecture](#architecture)
-- [Spaced Repetition (SM-2)](#spaced-repetition-sm-2)
+- [Spaced Repetition](#spaced-repetition)
 - [Getting started](#getting-started)
 - [Supabase setup](#supabase-setup)
 - [Database migrations and RLS](#database-migrations-and-rls)
@@ -32,7 +32,7 @@ reviews with the SM-2 Spaced Repetition algorithm.
 - Generate flashcard decks from a topic with Google Gemini.
 - Generate decks from PDF, DOC, DOCX, and TXT documents.
 - Import Q&A data from CSV, XLS, XLSX, or JSON files.
-- **Spaced Repetition Mode** powered by the SuperMemo 2 (SM-2) algorithm.
+- **Spaced Repetition Mode** powered by an SM-2-inspired, four-grade scheduler.
 - Dashboard progress badges per deck showing `new`, `due`, and `done` card counts.
 - Classic free-flip study mode and AI-generated multiple-choice quizzes.
 - Authenticate with email/password or Google.
@@ -52,9 +52,20 @@ React/Vite client
 The browser uses the Supabase publishable/anon key. Gemini requests go through
 the Edge Function so `GOOGLE_AI_KEY` remains a server-side secret.
 
-## Spaced Repetition (SM-2)
+## Spaced Repetition
 
-The app features an adaptive review scheduling engine based on the **SuperMemo 2 (SM-2)** algorithm to optimize long-term memory retention.
+The app uses an **SM-2-inspired, four-grade scheduler**. It borrows SM-2's core
+idea — an ease factor that rises and falls with recall quality, and an interval
+that grows by that factor — but it is not the textbook SuperMemo 2 formula, and
+the differences are deliberate:
+
+| | Textbook SM-2 | This app |
+|---|---|---|
+| Grades | 0–5 | 1–4 (Again / Hard / Good / Easy) |
+| Ease update | `EF' = EF + (0.1 − (5−q)(0.08 + (5−q)0.02))` | Fixed steps: Again −0.2, Hard −0.15, Easy +0.15 |
+| Hard / Easy | No effect on the interval beyond ease | Hard stretches by 1.2×, Easy by 1.3× on top of ease |
+| Bounds | None | Ease 1.3–3.0, interval ≤ 365 days |
+| Jitter | None | ±5% on intervals of 2+ days |
 
 ### Recall Ratings & Scheduling
 
@@ -66,6 +77,21 @@ During a Spaced Review session, cards are flipped to reveal the answer, and user
 | **Hard** | 2 | Recalled with difficulty; ease factor decreases by 0.15. Interval multiplier is 1.2x. |
 | **Good** | 3 | Recalled normally; ease factor unchanged. Interval expands by the deck's ease factor. |
 | **Easy** | 4 | Recalled effortlessly; ease factor increases by 0.15. Interval expands with a 1.3x bonus. |
+
+### Learning Steps
+
+A card that has never graduated is in the `learning` state; a card that had a real
+interval and then failed is `relearning`. Both are re-queued in the same session
+(once per card) and show `<1m` on the rating buttons.
+
+The first grade on a new card is where the four buttons differ most:
+
+| First grade | Result |
+|---|---|
+| **Again** | Stays in `learning`, due immediately |
+| **Hard** | Stays in `learning`, due immediately |
+| **Good** | Graduates to `review`, 1 day |
+| **Easy** | Graduates to `review`, 4 days |
 
 ### Interval Ceiling and Fuzz
 
@@ -219,7 +245,7 @@ The GitHub Actions workflow runs on pushes to `main`:
 src/
   components/       React components, study modes, and SpacedReviewMode
   hooks/            Application state hooks (useDashboardState)
-  services/         SM-2 scheduler, Supabase queries, file, and AI services
+  services/         SM-2-inspired scheduler, Supabase queries, file, and AI services
   types/            TypeScript domain types (Flashcard, CardReview, DeckProgress)
   lib/              Shared clients and utilities
   test/             Vitest test setup and DOM matchers
