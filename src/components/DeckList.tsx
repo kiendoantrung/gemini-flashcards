@@ -72,6 +72,10 @@ export function DeckList({
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                   {progress.new} new
                 </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                  {progress.learning} learning
+                </span>
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                   {progress.due} due
@@ -79,6 +83,10 @@ export function DeckList({
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                   {progress.done} done
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                  {progress.mastered} mastered
                 </span>
               </div>
 
