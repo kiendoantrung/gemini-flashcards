@@ -16,7 +16,6 @@ const EditDeckPage = lazy(() =>
 const SpacedReviewMode = lazy(() =>
   import('./SpacedReviewMode').then((module) => ({ default: module.SpacedReviewMode }))
 );
-const noop = () => undefined;
 
 interface AuthenticatedAppViewProps {
   user: User | null;
@@ -102,7 +101,6 @@ export function AuthenticatedAppView({
               deck={spacedReviewDeck}
               userId={user?.id ?? ''}
               onExit={onExitSpacedReview ?? (() => {})}
-              onComplete={noop}
             />
           </Suspense>
         ) : selectedDeck ? (

@@ -4,7 +4,7 @@ import type { Deck, DeckProgress } from '../types/flashcard';
 interface DeckListProps {
   decks: Deck[];
   deckProgressById?: Record<string, DeckProgress>;
-  onStartSpacedReview: (deck: Deck) => void;
+  onStartSpacedReview?: (deck: Deck) => void;
   onSelectDeck: (deck: Deck) => void;
   onUpdateDeck: (deckId: string, updates: Partial<Deck>) => void;
   onDeleteDeck: (deckId: string) => void;
@@ -106,7 +106,7 @@ export function DeckList({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onStartSpacedReview(deck);
+                      onStartSpacedReview?.(deck);
                     }}
                     className="px-3 py-1.5 text-xs font-extrabold text-white bg-duo-green hover:bg-duo-green-hover rounded-xl shadow-duo-button hover:shadow-duo-button-hover active:translate-y-0.5 transition-all"
                   >
