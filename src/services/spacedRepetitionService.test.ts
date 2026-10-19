@@ -439,7 +439,7 @@ describe('Supabase review persistence and queries', () => {
       'deck-1',
       ['c-1', 'c-2', 'c-3', 'c-4', 'c-5'].map((id) => ({ id })),
       now,
-      0,
+      'UTC',
     );
 
     expect(progress).toEqual({
@@ -496,7 +496,7 @@ describe('Supabase review persistence and queries', () => {
       eq: mockEqDeck,
     } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
 
-    const progress = await getDeckProgress('user-1', 'deck-1', [{ id: 'kept' }], now, 0);
+    const progress = await getDeckProgress('user-1', 'deck-1', [{ id: 'kept' }], now, 'UTC');
 
     // The deleted card must not inflate due/mastered, and the deck still has 1 card.
     expect(progress).toEqual({
@@ -546,9 +546,51 @@ describe('Supabase review persistence and queries', () => {
     const cards = [{ id: 'card-1' }];
 
     // GMT+7: both timestamps fall on Aug 30 locally.
-    await expect(getDeckProgress('user-1', 'deck-1', cards, localNow, 420)).resolves.toMatchObject({ done: 1 });
+    await expect(getDeckProgress('user-1', 'deck-1', cards, localNow, 'Asia/Ho_Chi_Minh')).resolves.toMatchObject({ done: 1 });
     // UTC: the review is still on Aug 29, so the old behaviour reported nothing.
-    await expect(getDeckProgress('user-1', 'deck-1', cards, localNow, 0)).resolves.toMatchObject({ done: 0 });
+    await expect(getDeckProgress('user-1', 'deck-1', cards, localNow, 'UTC')).resolves.toMatchObject({ done: 0 });
+  });
+
+  it('uses each timestamp\'s own offset across a daylight-saving transition', async () => {
+    // America/New_York springs forward on 2026-03-08: 23:30 EST Mar 7 becomes
+    // 08:00 EDT Mar 8. A single fixed offset would put both on the same day.
+    const reviewedAt = '2026-03-08T04:30:00.000Z';
+    const localNow = new Date('2026-03-08T12:00:00.000Z');
+
+    const mockSelect = vi.fn().mockReturnThis();
+    const mockEqUser = vi.fn().mockReturnThis();
+    const mockEqDeck = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'rev-dst',
+          user_id: 'user-1',
+          deck_id: 'deck-1',
+          card_id: 'card-1',
+          status: 'review',
+          ease_factor: 2.5,
+          interval: 6,
+          repetitions: 2,
+          due_date: '2026-03-14T00:00:00.000Z',
+          last_reviewed_at: reviewedAt,
+          created_at: '2026-03-01T10:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    vi.mocked(supabase.from).mockReturnValue({
+      select: mockSelect,
+    } as unknown as ReturnType<typeof supabase.from>);
+    mockSelect.mockReturnValue({
+      eq: mockEqUser,
+    } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    mockEqUser.mockReturnValue({
+      eq: mockEqDeck,
+    } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+
+    await expect(
+      getDeckProgress('user-1', 'deck-1', [{ id: 'card-1' }], localNow, 'America/New_York'),
+    ).resolves.toMatchObject({ done: 0 });
   });
 
   it('loads progress for every deck in a single query', async () => {
@@ -603,7 +645,7 @@ describe('Supabase review persistence and queries', () => {
         { id: 'deck-b', cards: [{ id: 'b-1' }] },
       ],
       now,
-      0,
+      'UTC',
     );
 
     expect(supabase.from).toHaveBeenCalledTimes(1);

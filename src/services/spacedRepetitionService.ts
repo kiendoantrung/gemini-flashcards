@@ -240,17 +240,29 @@ export async function reviewCard(
   return mapRowToCardReview(data as CardReviewRow);
 }
 
-function currentUtcOffsetMinutes(): number {
-  return -new Date().getTimezoneOffset();
+function currentTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 /**
- * Calendar day of `date` in the user's timezone, expressed as YYYY-MM-DD.
+ * Calendar day of `date` in the given timezone, expressed as YYYY-MM-DD.
  * Comparing UTC days directly would put a 01:00 review in GMT+7 on the
- * previous day, so the offset is applied before slicing.
+ * previous day. A timezone name is used instead of a fixed offset because
+ * the offset changes across a daylight-saving transition, and the two
+ * timestamps being compared can sit on different sides of it.
  */
-function localDayKey(date: Date, utcOffsetMinutes: number): string {
-  return new Date(date.getTime() + utcOffsetMinutes * 60_000).toISOString().slice(0, 10);
+function localDayKey(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((candidate) => candidate.type === type)?.value ?? '';
+
+  return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
 function emptyProgress(): DeckProgress {
@@ -266,7 +278,7 @@ function countProgress(
   reviews: CardReview[],
   cards: Pick<Flashcard, 'id'>[],
   now: Date,
-  utcOffsetMinutes: number,
+  timeZone: string,
 ): DeckProgress {
   if (cards.length === 0) {
     return emptyProgress();
@@ -284,7 +296,7 @@ function countProgress(
   let doneCount = 0;
 
   const nowTime = now.getTime();
-  const todayKey = localDayKey(now, utcOffsetMinutes);
+  const todayKey = localDayKey(now, timeZone);
 
   for (const review of relevantReviews) {
     if (review.status === 'learning' || review.status === 'relearning') {
@@ -303,7 +315,7 @@ function countProgress(
     if (
       review.lastReviewedAt &&
       dueTime > nowTime &&
-      localDayKey(new Date(review.lastReviewedAt), utcOffsetMinutes) === todayKey
+      localDayKey(new Date(review.lastReviewedAt), timeZone) === todayKey
     ) {
       doneCount++;
     }
@@ -337,7 +349,7 @@ export async function getDeckProgress(
   deckId: string,
   cards: Pick<Flashcard, 'id'>[],
   now: Date = new Date(),
-  utcOffsetMinutes: number = currentUtcOffsetMinutes(),
+  timeZone: string = currentTimeZone(),
 ): Promise<DeckProgress> {
   if (cards.length === 0) {
     return emptyProgress();
@@ -354,7 +366,7 @@ export async function getDeckProgress(
   }
 
   const reviews = ((data ?? []) as CardReviewRow[]).map(mapRowToCardReview);
-  return countProgress(reviews, cards, now, utcOffsetMinutes);
+  return countProgress(reviews, cards, now, timeZone);
 }
 
 /**
@@ -365,7 +377,7 @@ export async function getDeckProgressBatch(
   userId: string,
   decks: Array<{ id: string; cards: Pick<Flashcard, 'id'>[] }>,
   now: Date = new Date(),
-  utcOffsetMinutes: number = currentUtcOffsetMinutes(),
+  timeZone: string = currentTimeZone(),
 ): Promise<Record<string, DeckProgress>> {
   const deckIds = decks.map((deck) => deck.id);
   if (deckIds.length === 0) {
@@ -386,7 +398,7 @@ export async function getDeckProgressBatch(
 
   const progressById: Record<string, DeckProgress> = {};
   for (const deck of decks) {
-    progressById[deck.id] = countProgress(byDeck.get(deck.id) ?? [], deck.cards, now, utcOffsetMinutes);
+    progressById[deck.id] = countProgress(byDeck.get(deck.id) ?? [], deck.cards, now, timeZone);
   }
   return progressById;
 }
