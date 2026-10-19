@@ -204,6 +204,74 @@ describe('Supabase review persistence and queries', () => {
     expect(queue[0].card.id).toBe('card-1');
   });
 
+  describe('daily new-card budget', () => {
+    const cards = Array.from({ length: 25 }, (_, index) => ({
+      id: `new-${index}`,
+      front: `Front ${index}`,
+      back: `Back ${index}`,
+    }));
+
+    const introducedRow = (index: number, createdAt = '2026-08-29T08:00:00.000Z') => ({
+      id: `rev-${index}`,
+      user_id: 'user-1',
+      deck_id: 'deck-1',
+      card_id: `new-${index}`,
+      status: 'review',
+      ease_factor: 2.5,
+      interval: 1,
+      repetitions: 1,
+      due_date: '2026-09-05T00:00:00.000Z',
+      last_reviewed_at: createdAt,
+      created_at: createdAt,
+    });
+
+    const mockRows = (rows: unknown[]) => {
+      const mockSelect = vi.fn().mockReturnThis();
+      const mockEqUser = vi.fn().mockReturnThis();
+      const mockEqDeck = vi.fn().mockResolvedValue({ data: rows, error: null });
+      vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof supabase.from>);
+      mockSelect.mockReturnValue({ eq: mockEqUser } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+      mockEqUser.mockReturnValue({ eq: mockEqDeck } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+    };
+
+    it('subtracts the cards already introduced today from the budget', async () => {
+      mockRows([0, 1, 2, 3, 4].map((index) => introducedRow(index)));
+
+      const queue = await getDueCards('user-1', 'deck-1', cards, now, 'UTC');
+
+      expect(queue.map(({ card }) => card.id)).toEqual(
+        Array.from({ length: 15 }, (_, index) => `new-${index + 5}`),
+      );
+    });
+
+    it('introduces no new cards once the daily budget is spent', async () => {
+      mockRows(Array.from({ length: 20 }, (_, index) => introducedRow(index)));
+
+      const queue = await getDueCards('user-1', 'deck-1', cards, now, 'UTC');
+
+      expect(queue).toEqual([]);
+    });
+
+    it('ignores reviews from previous days and cards no longer in the deck', async () => {
+      mockRows([
+        introducedRow(0, '2026-08-28T08:00:00.000Z'),
+        {
+          ...introducedRow(1),
+          id: 'rev-orphan',
+          card_id: 'deleted-card',
+        },
+      ]);
+
+      const queue = await getDueCards('user-1', 'deck-1', cards, now, 'UTC');
+
+      // new-0 was introduced yesterday so it is no longer new, but it does not
+      // consume today's budget either. The orphan row is ignored entirely.
+      expect(queue).toHaveLength(20);
+      expect(queue[0].card.id).toBe('new-1');
+      expect(queue[19].card.id).toBe('new-20');
+    });
+  });
+
   it('fetches and orders due cards with relearning first, due reviews next, and up to 20 new cards', async () => {
     const mockSelect = vi.fn().mockReturnThis();
     const mockEqUser = vi.fn().mockReturnThis();

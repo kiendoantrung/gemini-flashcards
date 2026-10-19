@@ -200,7 +200,8 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
           Spaced Review: {deck.title}
         </h2>
         <p className="text-duo-pencil text-base mb-8 font-medium">
-          No cards are due for review in this deck right now! Great job keeping up with your studies.
+          No cards are due for review in this deck right now! New cards are introduced up to a
+          daily limit, so if you have already hit it today, come back tomorrow.
         </p>
         <button
           onClick={onExit}
