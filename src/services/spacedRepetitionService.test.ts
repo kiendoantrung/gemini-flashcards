@@ -77,28 +77,42 @@ describe('four-grade spaced repetition calculation', () => {
   });
 
   it.each([
-    [2, 2.35],
-    [3, 2.5],
-    [4, 2.65],
-  ] as const)('schedules the second successful review for quality %i after six days', (quality, easeFactor) => {
+    [2, 5, 2.35],
+    [3, 6, 2.5],
+    [4, 8, 2.65],
+  ] as const)('stretches the six-day learning step for quality %i', (quality, interval, easeFactor) => {
     expect(calculateNextReview({ ...fresh, repetitions: 1 }, quality, now)).toMatchObject({
       repetitions: 2,
-      interval: 6,
+      interval,
       easeFactor,
     });
   });
 
   it.each([
-    [2, 24, 2.35],
+    [2, 12, 2.35],
     [3, 25, 2.5],
-    [4, 27, 2.65],
-  ] as const)('applies the updated ease factor once to mature cards for quality %i', (quality, interval, easeFactor) => {
+    [4, 34, 2.65],
+  ] as const)('applies ease once and the grade modifier for quality %i', (quality, interval, easeFactor) => {
     expect(calculateNextReview({ status: 'review', repetitions: 2, interval: 10, easeFactor: 2.5 }, quality, now))
       .toMatchObject({
         repetitions: 3,
         interval,
         easeFactor,
       });
+  });
+
+  it('always schedules Hard sooner than Good and Easy later than Good', () => {
+    const mature = { status: 'review' as const, repetitions: 2, interval: 10, easeFactor: 2.5 };
+    const secondStep = { ...fresh, repetitions: 1 };
+
+    for (const state of [mature, secondStep]) {
+      const hard = calculateNextReview(state, 2, now).interval;
+      const good = calculateNextReview(state, 3, now).interval;
+      const easy = calculateNextReview(state, 4, now).interval;
+
+      expect(hard).toBeLessThan(good);
+      expect(easy).toBeGreaterThan(good);
+    }
   });
 
   it('keeps the ease factor at its 1.3 lower bound across repeated Again ratings', () => {
