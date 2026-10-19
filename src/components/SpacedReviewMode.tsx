@@ -27,7 +27,7 @@ interface RatedAction {
   indexBefore: number;
   queueLengthBefore: number;
   wasCompleted: boolean;
-  previousAgainCount: number;
+  previousRepeatCount: number;
   previousFinalRating: ReviewQuality | undefined;
 }
 
@@ -68,7 +68,7 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
   const [currentIndex, setCurrentIndex] = useState(0);
   const [sessionCardIds, setSessionCardIds] = useState<string[]>([]);
   const [completedCardIds, setCompletedCardIds] = useState<Set<string>>(new Set());
-  const [againCounts, setAgainCounts] = useState<Record<string, number>>({});
+  const [repeatCounts, setRepeatCounts] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -95,7 +95,7 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
       setCurrentIndex(0);
       setSessionCardIds([...new Set(due.map(({ card }) => card.id))]);
       setCompletedCardIds(new Set());
-      setAgainCounts({});
+      setRepeatCounts({});
       setRatings({ 1: 0, 2: 0, 3: 0, 4: 0 });
       setFinalRatingByCard({});
       setRatedActions([]);
@@ -143,7 +143,7 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
       indexBefore: currentIndex,
       queueLengthBefore: queue.length,
       wasCompleted: completedCardIds.has(currentItem.card.id),
-      previousAgainCount: againCounts[currentItem.card.id] ?? 0,
+      previousRepeatCount: repeatCounts[currentItem.card.id] ?? 0,
       previousFinalRating: finalRatingByCard[currentItem.card.id],
     };
     setIsSubmitting(true);
@@ -152,13 +152,19 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
     try {
       const updatedReview = await reviewCard(userId, deck.id, currentItem.card.id, quality);
 
-      if (quality === 1) {
-        const previousAgainCount = againCounts[currentItem.card.id] ?? 0;
-        if (previousAgainCount === 0) {
-          // Each card gets one immediate relearning retry; a second Again is
-          // persisted but ends the card's work for this session.
+      // Again and Hard both leave the card in a learning step, so both send it
+      // back to the end of the queue. Keying off the persisted status rather
+      // than the grade keeps the session in step with the scheduler.
+      const staysInLearning =
+        updatedReview.status === 'learning' || updatedReview.status === 'relearning';
+
+      if (staysInLearning) {
+        const previousRepeatCount = repeatCounts[currentItem.card.id] ?? 0;
+        if (previousRepeatCount === 0) {
+          // One immediate retry per card; a second repeat is still persisted but
+          // ends the card's work for this session instead of looping forever.
           setQueue((prev) => [...prev, { card: currentItem.card, review: updatedReview }]);
-          setAgainCounts((prev) => ({ ...prev, [currentItem.card.id]: 1 }));
+          setRepeatCounts((prev) => ({ ...prev, [currentItem.card.id]: 1 }));
         } else {
           setCompletedCardIds((prev) => new Set(prev).add(currentItem.card.id));
         }
@@ -232,12 +238,12 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
         }
         return next;
       });
-      setAgainCounts((prev) => {
+      setRepeatCounts((prev) => {
         const next = { ...prev };
-        if (action.previousAgainCount === 0) {
+        if (action.previousRepeatCount === 0) {
           delete next[action.cardId];
         } else {
-          next[action.cardId] = action.previousAgainCount;
+          next[action.cardId] = action.previousRepeatCount;
         }
         return next;
       });

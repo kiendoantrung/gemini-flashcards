@@ -19,6 +19,12 @@ const MIN_EASE_FACTOR = 1.3;
  */
 const MAX_EASE_FACTOR = 3.0;
 const FIRST_INTERVAL_DAYS = 1;
+/**
+ * Easy on a card that is still learning skips the 1-day step entirely, so the
+ * first grade on a new card actually differs: Again and Hard repeat the step,
+ * Good graduates to 1 day, Easy graduates to 4.
+ */
+const EASY_LEARNING_INTERVAL_DAYS = 4;
 const SECOND_INTERVAL_DAYS = 6;
 /** Hard barely grows the current interval; Easy adds a flat bonus on top of ease. */
 const HARD_INTERVAL_MULTIPLIER = 1.2;
@@ -98,7 +104,9 @@ export function calculateNextReview(
   if (quality === 1) {
     const easeFactor = Math.max(MIN_EASE_FACTOR, Math.round((current.easeFactor - 0.2) * 100) / 100);
     return {
-      status: 'relearning',
+      // A card that has never graduated is still learning; only a card that
+      // once had a real interval and then failed is relearning.
+      status: current.repetitions === 0 ? 'learning' : 'relearning',
       repetitions: 0,
       interval: 0,
       easeFactor,
@@ -121,8 +129,20 @@ export function calculateNextReview(
   // the same delay as Good while still costing ease.
   let interval: number;
   if (current.repetitions === 0) {
-    // Sub-day learning steps are not modelled, so every first success waits a day.
-    interval = FIRST_INTERVAL_DAYS;
+    if (quality === 2) {
+      // Hard repeats the learning step instead of graduating. Before this, a
+      // new card's first Hard, Good and Easy all produced the same one-day
+      // interval, so the three buttons were indistinguishable.
+      return {
+        status: 'learning',
+        repetitions: 0,
+        interval: 0,
+        easeFactor,
+        dueDate: nowIso,
+        lastReviewedAt: nowIso,
+      };
+    }
+    interval = quality === 4 ? EASY_LEARNING_INTERVAL_DAYS : FIRST_INTERVAL_DAYS;
   } else if (current.repetitions === 1) {
     if (quality === 2) {
       interval = Math.round(SECOND_INTERVAL_DAYS / HARD_INTERVAL_MULTIPLIER);
@@ -175,7 +195,9 @@ function fuzzInterval(interval: number, random: () => number): number {
 }
 
 export function formatNextInterval(next: Pick<ReviewState, 'interval' | 'status'>): string {
-  return next.status === 'relearning' && next.interval === 0 ? '<1m' : `${next.interval}d`;
+  const isLearningStep =
+    (next.status === 'learning' || next.status === 'relearning') && next.interval === 0;
+  return isLearningStep ? '<1m' : `${next.interval}d`;
 }
 
 export async function getDueCards(
