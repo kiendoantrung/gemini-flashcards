@@ -30,7 +30,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Matches engines.node and the Vercel project runtime.
+          node-version: '24'
           # No `cache: npm`: package-lock.json is gitignored, and setup-node
           # cannot resolve a cache key without it.
 
