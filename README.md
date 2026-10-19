@@ -115,10 +115,42 @@ next morning, not at 23:00 the following evening.
 
 ### Dashboard Progress Indicators
 
-Each deck displays three status counters:
+Each deck displays five status counters:
 - 🔵 **`new`**: Cards that have never been reviewed.
+- 🟣 **`learning`**: Cards in their first learning steps, or cards that lapsed and are
+  being relearned. They come back inside the current session.
 - 🟡 **`due`**: Cards whose review date is due today or earlier.
 - 🟢 **`done`**: Cards reviewed today whose next scheduled review is in the future.
+- 🟦 **`mastered`**: Cards whose current interval has reached
+  `MASTERED_INTERVAL_DAYS` (21 days), i.e. scheduled a month or more out.
+
+`mastered` is a subset of the scheduled cards rather than a separate pile — a card
+counted as mastered also counts as `done` once reviewed today.
+
+### Statistics
+
+The **Statistics** button on the dashboard opens a page built from `review_logs`,
+covering the last 30 study days:
+
+- **Reviews / Retention / Active days / Streak** summary tiles. Retention counts a
+  rating as recalled when it was not *Again*, matching the session summary so the two
+  screens never disagree.
+- **Reviews per day** — a stacked bar chart splitting recalled ratings from *Again*.
+  Days are bucketed with the same 04:00 boundary as scheduling.
+- **Next 7 days** — cards becoming due, with anything overdue folded onto today
+  rather than hidden. Cards whose deck entry was deleted are skipped, since cards live
+  in the deck's JSONB column and their `card_reviews` rows outlive them.
+- **Retention by deck** — per-deck retention bars, coloured green ≥ 80%, amber ≥ 60%,
+  red below. Decks deleted after their reviews were logged are filtered out.
+
+The streak does not break just because today has no reviews yet — it starts counting
+from yesterday in that case, so the number does not read `0` every morning. The walk
+stops at the oldest day in the window, so a streak longer than 30 days is reported as
+a lower bound.
+
+Aggregation runs in JavaScript over a bounded window rather than in SQL. A heavy user
+produces a few thousand rows per month, which is a small response; if that changes,
+this should move into an RPC.
 
 ### Session Summary
 
@@ -126,6 +158,8 @@ Upon completing a session, the app presents a summary report including:
 - Total cards reviewed.
 - Breakdown count of ratings (Again / Hard / Good / Easy).
 - Calculated **Retention Rate** percentage.
+- An **Undo** action that reverts the last rating and restores the card to its prior
+  state.
 
 ## Getting started
 
