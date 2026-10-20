@@ -145,7 +145,7 @@ export function Home() {
                   <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-duo-green-subtle rounded-duo-pill border-2 border-duo-green">
                     <Sparkles className="w-4 h-4 text-duo-green fill-duo-green" />
                     <span className="text-duo-charcoal font-bold text-xs uppercase tracking-wider">
-                      Google Gemini AI &bull; SM-2 Spaced Repetition
+                      Google Gemini AI &bull; SM-2-style Spaced Repetition
                     </span>
                   </div>
 
@@ -193,7 +193,7 @@ export function Home() {
                   </div>
                   {/* Floating badge - Spaced Repetition */}
                   <div className="absolute -bottom-3 -left-2 md:-bottom-4 md:-left-4 px-4 py-2 bg-duo-green rounded-duo-md border-2 border-duo-green-dark shadow-duo-green text-white font-extrabold text-xs tracking-wider uppercase flex items-center gap-1.5 z-20">
-                    <Clock className="w-4 h-4 text-white" /> SM-2 Spaced Repetition
+                    <Clock className="w-4 h-4 text-white" /> SM-2-style Spaced Repetition
                   </div>
                 </div>
               </Reveal>
@@ -215,7 +215,7 @@ export function Home() {
                   Remember Anything with Spaced Repetition
                 </h2>
                 <p className="text-duo-pencil text-lg font-medium max-w-2xl mx-auto mt-3 leading-relaxed">
-                  Stop cramming and forgetting. Our adaptive <strong>SM-2 algorithm</strong> schedules reviews at the precise moment before you forget each card.
+                  Stop cramming and forgetting. Our adaptive <strong>SM-2-style algorithm</strong> schedules reviews at the precise moment before you forget each card.
                 </p>
               </div>
             </Reveal>
@@ -478,7 +478,7 @@ export function Home() {
                 <div className="w-14 h-14 bg-duo-green-subtle rounded-2xl border-2 border-duo-green flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
                   <Clock className="w-7 h-7 text-duo-green" />
                 </div>
-                <h3 className="font-heading font-extrabold text-duo-charcoal mb-2 text-lg">Spaced Repetition (SM-2)</h3>
+                <h3 className="font-heading font-extrabold text-duo-charcoal mb-2 text-lg">Spaced Repetition (SM-2-style)</h3>
                 <p className="text-duo-pencil text-sm leading-relaxed font-medium">
                   Scientific review scheduling calculates personalized recall intervals to guarantee memory retention.
                 </p>
@@ -623,7 +623,7 @@ export function Home() {
                     <CheckCircle className="w-4 h-4 text-duo-green" /> 100% Free
                   </span>
                   <span className="flex items-center gap-1.5 text-duo-charcoal">
-                    <Award className="w-4 h-4 text-duo-green" /> SM-2 Spaced Repetition
+                    <Award className="w-4 h-4 text-duo-green" /> SM-2-style Spaced Repetition
                   </span>
                   <span className="flex items-center gap-1.5 text-duo-charcoal">
                     <Zap className="w-4 h-4 text-duo-blue" /> Instant AI Generation

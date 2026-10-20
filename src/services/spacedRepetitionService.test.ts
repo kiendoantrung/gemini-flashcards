@@ -8,6 +8,7 @@ import {
   getDeckProgress,
   getDeckProgressBatch,
   undoLastReview,
+  type ReviewState,
 } from './spacedRepetitionService';
 import { supabase } from '../lib/supabase';
 
@@ -53,7 +54,7 @@ describe('four-grade spaced repetition calculation', () => {
   const fresh = { status: 'new' as const, easeFactor: 2.5, interval: 0, repetitions: 0 };
 
   it('requeues Again immediately and clamps ease at 1.3', () => {
-    expect(calculateNextReview({ ...fresh, easeFactor: 1.35, repetitions: 4, interval: 10 }, 1, now))
+    expect(calculateNextReview({ ...fresh, easeFactor: 1.35, repetitions: 4, interval: 10 }, 1, now, 'UTC'))
       .toMatchObject({
         status: 'relearning',
         repetitions: 0,
@@ -64,17 +65,42 @@ describe('four-grade spaced repetition calculation', () => {
   });
 
   it.each([
-    [2, 2.35],
-    [3, 2.5],
-    [4, 2.65],
-  ] as const)('schedules the first successful review for quality %i after one day', (quality, easeFactor) => {
-    expect(calculateNextReview(fresh, quality, now))
-      .toMatchObject({
-        status: 'review',
-        repetitions: 1,
-        interval: 1,
-        easeFactor,
-      });
+    [3, 1, 2.5],
+    [4, 4, 2.65],
+  ] as const)('graduates a new card on quality %i after %i days', (quality, interval, easeFactor) => {
+    expect(calculateNextReview(fresh, quality, now, 'UTC')).toMatchObject({
+      status: 'review',
+      repetitions: 1,
+      interval,
+      easeFactor,
+    });
+  });
+
+  it('keeps a new card in learning when it is rated Hard', () => {
+    // Hard must not graduate: a card that was barely recalled is not ready for
+    // a one-day gap. Before this, Hard, Good and Easy all gave one day.
+    expect(calculateNextReview(fresh, 2, now, 'UTC')).toMatchObject({
+      status: 'learning',
+      repetitions: 0,
+      interval: 0,
+      easeFactor: 2.35,
+      dueDate: now.toISOString(),
+    });
+  });
+
+  it('separates a first Again (learning) from a later Again (relearning)', () => {
+    const firstAgain = calculateNextReview(fresh, 1, now, 'UTC');
+    const relapse = calculateNextReview(
+      { status: 'review', repetitions: 3, interval: 10, easeFactor: 2.5 },
+      1,
+      now,
+      'UTC',
+    );
+
+    expect(firstAgain.status).toBe('learning');
+    expect(relapse.status).toBe('relearning');
+    expect(formatNextInterval(firstAgain)).toBe('<1m');
+    expect(formatNextInterval(relapse)).toBe('<1m');
   });
 
   it.each([
@@ -82,7 +108,7 @@ describe('four-grade spaced repetition calculation', () => {
     [3, 6, 2.5],
     [4, 8, 2.65],
   ] as const)('stretches the six-day learning step for quality %i', (quality, interval, easeFactor) => {
-    expect(calculateNextReview({ ...fresh, repetitions: 1 }, quality, now)).toMatchObject({
+    expect(calculateNextReview({ ...fresh, repetitions: 1 }, quality, now, 'UTC')).toMatchObject({
       repetitions: 2,
       interval,
       easeFactor,
@@ -94,7 +120,7 @@ describe('four-grade spaced repetition calculation', () => {
     [3, 25, 2.5],
     [4, 34, 2.65],
   ] as const)('applies ease once and the grade modifier for quality %i', (quality, interval, easeFactor) => {
-    expect(calculateNextReview({ status: 'review', repetitions: 2, interval: 10, easeFactor: 2.5 }, quality, now))
+    expect(calculateNextReview({ status: 'review', repetitions: 2, interval: 10, easeFactor: 2.5 }, quality, now, 'UTC'))
       .toMatchObject({
         repetitions: 3,
         interval,
@@ -106,10 +132,11 @@ describe('four-grade spaced repetition calculation', () => {
     const mature = { status: 'review' as const, repetitions: 2, interval: 10, easeFactor: 2.5 };
     const secondStep = { ...fresh, repetitions: 1 };
 
-    for (const state of [mature, secondStep]) {
-      const hard = calculateNextReview(state, 2, now).interval;
-      const good = calculateNextReview(state, 3, now).interval;
-      const easy = calculateNextReview(state, 4, now).interval;
+    // `fresh` is the case that used to be wrong: all three grades returned 1 day.
+    for (const state of [fresh, mature, secondStep]) {
+      const hard = calculateNextReview(state, 2, now, 'UTC').interval;
+      const good = calculateNextReview(state, 3, now, 'UTC').interval;
+      const easy = calculateNextReview(state, 4, now, 'UTC').interval;
 
       expect(hard).toBeLessThan(good);
       expect(easy).toBeGreaterThan(good);
@@ -117,16 +144,35 @@ describe('four-grade spaced repetition calculation', () => {
   });
 
   it('keeps the ease factor at its 1.3 lower bound across repeated Again ratings', () => {
-    const onceAgain = calculateNextReview({ ...fresh, easeFactor: 1.3 }, 1, now);
-    const twiceAgain = calculateNextReview(onceAgain, 1, now);
+    const onceAgain = calculateNextReview({ ...fresh, easeFactor: 1.3 }, 1, now, 'UTC');
+    const twiceAgain = calculateNextReview(onceAgain, 1, now, 'UTC');
 
     expect(onceAgain.easeFactor).toBe(1.3);
     expect(twiceAgain).toMatchObject({
-      status: 'relearning',
+      status: 'learning',
       repetitions: 0,
       interval: 0,
       easeFactor: 1.3,
     });
+  });
+
+  it('stops raising ease at the 3.0 ceiling', () => {
+    let state: ReviewState = { status: 'review', repetitions: 3, interval: 10, easeFactor: 2.9 };
+
+    for (let review = 0; review < 5; review += 1) {
+      state = calculateNextReview(state, 4, now, 'UTC');
+    }
+
+    // 2.9 + 0.15 would be 3.05 on the first Easy; it must clamp, not drift.
+    expect(state.easeFactor).toBe(3);
+  });
+
+  it('caps the interval at one year', () => {
+    const mature = { status: 'review' as const, repetitions: 5, interval: 300, easeFactor: 3 };
+
+    // 300 x 3 x 1.3 would be 1170 days.
+    expect(calculateNextReview(mature, 4, now, 'UTC').interval).toBe(365);
+    expect(calculateNextReview(mature, 3, now, 'UTC').interval).toBe(365);
   });
 
   it('formats next interval predictions correctly', () => {
@@ -134,6 +180,43 @@ describe('four-grade spaced repetition calculation', () => {
     expect(formatNextInterval({ status: 'review', interval: 1 })).toBe('1d');
     expect(formatNextInterval({ status: 'review', interval: 6 })).toBe('6d');
     expect(formatNextInterval({ status: 'review', interval: 25 })).toBe('25d');
+  });
+
+  it('schedules to the start of the study day, not 24h after the rating', () => {
+    // 23:00 on Aug 29 in GMT+7. Adding 24h would hide the card until 23:00 on
+    // Aug 30, which is outside the evening study window it came from.
+    const lateEvening = new Date('2026-08-29T16:00:00.000Z');
+
+    const next = calculateNextReview(fresh, 3, lateEvening, 'Asia/Ho_Chi_Minh');
+
+    expect(next.interval).toBe(1);
+    // 04:00 on Aug 30 local time, i.e. 21:00Z on Aug 29.
+    expect(next.dueDate).toBe('2026-08-29T21:00:00.000Z');
+  });
+
+  it('treats a rating after midnight as belonging to the previous study day', () => {
+    // 01:00 on Aug 30 local is still the Aug 29 study day, so a 1-day interval
+    // lands on the Aug 30 boundary three hours later. This is the intended
+    // night-owl behaviour, not an off-by-one.
+    const afterMidnight = new Date('2026-08-29T18:00:00.000Z');
+
+    const next = calculateNextReview(fresh, 3, afterMidnight, 'Asia/Ho_Chi_Minh');
+
+    expect(next.dueDate).toBe('2026-08-29T21:00:00.000Z');
+  });
+
+  it('keeps the due time at 04:00 local across a daylight-saving transition', () => {
+    // America/New_York springs forward on 2026-03-08 and falls back on
+    // 2026-11-01. A fixed offset would land on 03:00 or 05:00 local.
+    const beforeSpringForward = new Date('2026-03-07T17:00:00.000Z'); // 12:00 EST
+    const beforeFallBack = new Date('2026-10-31T16:00:00.000Z'); // 12:00 EDT
+
+    expect(calculateNextReview(fresh, 3, beforeSpringForward, 'America/New_York').dueDate).toBe(
+      '2026-03-08T08:00:00.000Z', // 04:00 EDT
+    );
+    expect(calculateNextReview(fresh, 3, beforeFallBack, 'America/New_York').dueDate).toBe(
+      '2026-11-01T09:00:00.000Z', // 04:00 EST
+    );
   });
 });
 
@@ -271,6 +354,21 @@ describe('Supabase review persistence and queries', () => {
       expect(queue[0].card.id).toBe('new-1');
       expect(queue[19].card.id).toBe('new-20');
     });
+
+    it('refreshes the budget at 04:00 local time, not at midnight', async () => {
+      // 01:00 on Aug 30 in GMT+7 — still the Aug 29 study day.
+      mockRows([0, 1, 2, 3, 4].map((index) => introducedRow(index, '2026-08-29T18:00:00.000Z')));
+
+      const beforeRollover = new Date('2026-08-29T20:00:00.000Z'); // 03:00 Aug 30 local
+      const afterRollover = new Date('2026-08-29T21:00:00.000Z'); // 04:00 Aug 30 local
+
+      await expect(getDueCards('user-1', 'deck-1', cards, beforeRollover, 'Asia/Ho_Chi_Minh'))
+        .resolves.toHaveLength(15);
+
+      // A midnight boundary would still count these five as today's work.
+      await expect(getDueCards('user-1', 'deck-1', cards, afterRollover, 'Asia/Ho_Chi_Minh'))
+        .resolves.toHaveLength(20);
+    });
   });
 
   it('fetches and orders due cards with relearning first, due reviews next, and up to 20 new cards', async () => {
@@ -382,7 +480,7 @@ describe('Supabase review persistence and queries', () => {
         status: 'review',
         interval: 1,
         repetitions: 1,
-        due_date: '2026-08-30T12:00:00.000Z',
+        due_date: '2026-08-30T04:00:00.000Z',
         last_reviewed_at: '2026-08-29T12:00:00.000Z',
       },
       error: null,
@@ -415,7 +513,7 @@ describe('Supabase review persistence and queries', () => {
       return {} as unknown as ReturnType<typeof supabase.from>;
     });
 
-    await reviewCard('user-1', 'deck-1', 'card-1', 3, now);
+    await reviewCard('user-1', 'deck-1', 'card-1', 3, now, 'UTC');
 
     expect(mockUpsert).toHaveBeenCalledWith(
       {
@@ -426,7 +524,7 @@ describe('Supabase review persistence and queries', () => {
         ease_factor: 2.5,
         interval: 1,
         repetitions: 1,
-        due_date: '2026-08-30T12:00:00.000Z',
+        due_date: '2026-08-30T04:00:00.000Z',
         last_reviewed_at: '2026-08-29T12:00:00.000Z',
       },
       { onConflict: 'user_id,deck_id,card_id' },
@@ -448,7 +546,7 @@ describe('Supabase review persistence and queries', () => {
       next_ease_factor: 2.5,
       next_interval: 1,
       next_repetitions: 1,
-      next_due_date: '2026-08-30T12:00:00.000Z',
+      next_due_date: '2026-08-30T04:00:00.000Z',
       reviewed_at: '2026-08-29T12:00:00.000Z',
     });
   });
@@ -463,7 +561,7 @@ describe('Supabase review persistence and queries', () => {
       ease_factor: 2.5,
       interval: 1,
       repetitions: 1,
-      due_date: '2026-08-30T12:00:00.000Z',
+      due_date: '2026-08-30T04:00:00.000Z',
       last_reviewed_at: '2026-08-29T12:00:00.000Z',
       created_at: '2026-08-28T10:00:00.000Z',
     };
@@ -489,7 +587,7 @@ describe('Supabase review persistence and queries', () => {
       } as unknown as ReturnType<typeof supabase.from>;
     });
 
-    const result = await reviewCard('user-1', 'deck-1', 'card-1', 3, now);
+    const result = await reviewCard('user-1', 'deck-1', 'card-1', 3, now, 'UTC');
 
     expect(result.interval).toBe(1);
     expect(consoleError).toHaveBeenCalledWith(
@@ -497,6 +595,101 @@ describe('Supabase review persistence and queries', () => {
       expect.anything(),
     );
     consoleError.mockRestore();
+  });
+
+  describe('interval fuzz', () => {
+    const existingRow = {
+      id: 'rev-1',
+      user_id: 'user-1',
+      deck_id: 'deck-1',
+      card_id: 'card-1',
+      status: 'review',
+      ease_factor: 2.5,
+      interval: 4,
+      repetitions: 3,
+      due_date: '2026-09-01T04:00:00.000Z',
+      last_reviewed_at: '2026-08-28T10:00:00.000Z',
+      created_at: '2026-08-20T10:00:00.000Z',
+    };
+
+    function mockReviewWith(existing: Record<string, unknown> | null) {
+      const upsert = vi.fn().mockReturnThis();
+      const upsertSelect = vi.fn().mockReturnThis();
+      const upsertSingle = vi.fn().mockResolvedValue({
+        data: { ...existingRow, ...(existing ?? {}) },
+        error: null,
+      });
+      const logInsert = vi.fn().mockResolvedValue({ error: null });
+
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'card_reviews') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  eq: () => ({ maybeSingle: () => Promise.resolve({ data: existing, error: null }) }),
+                }),
+              }),
+            }),
+            upsert: upsert.mockReturnValue({
+              select: upsertSelect.mockReturnValue({ single: upsertSingle }),
+            }),
+          } as unknown as ReturnType<typeof supabase.from>;
+        }
+        return { insert: logInsert } as unknown as ReturnType<typeof supabase.from>;
+      });
+
+      return { upsert, logInsert };
+    }
+
+    it('spreads the persisted interval and moves the due date with it', async () => {
+      const { upsert, logInsert } = mockReviewWith(existingRow);
+      // Good on interval 4 at ease 2.5 gives 10 days; the fuzz spread is +/-1.
+
+      await reviewCard('user-1', 'deck-1', 'card-1', 3, now, 'UTC', () => 0);
+
+      expect(upsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({ interval: 9, due_date: '2026-09-07T04:00:00.000Z' }),
+        { onConflict: 'user_id,deck_id,card_id' },
+      );
+      // The log must agree with the row that was actually written.
+      expect(logInsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({ next_interval: 9, next_due_date: '2026-09-07T04:00:00.000Z' }),
+      );
+
+      await reviewCard('user-1', 'deck-1', 'card-1', 3, now, 'UTC', () => 0.99);
+
+      expect(upsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({ interval: 11, due_date: '2026-09-09T04:00:00.000Z' }),
+        { onConflict: 'user_id,deck_id,card_id' },
+      );
+    });
+
+    it('never fuzzes an interval below the threshold', async () => {
+      const freshCard = { ...existingRow, interval: 0, repetitions: 0, status: 'new' };
+      const { upsert } = mockReviewWith(freshCard);
+
+      // A 1-day interval: 5% would round to zero, so the value must be exact.
+      await reviewCard('user-1', 'deck-1', 'card-1', 3, now, 'UTC', () => 0.99);
+
+      expect(upsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({ interval: 1, due_date: '2026-08-30T04:00:00.000Z' }),
+        { onConflict: 'user_id,deck_id,card_id' },
+      );
+    });
+
+    it('does not let the fuzz push an interval past the one-year cap', async () => {
+      const mature = { ...existingRow, interval: 150, repetitions: 5, ease_factor: 3 };
+      const { upsert } = mockReviewWith(mature);
+
+      // Easy: 150 x 3 x 1.3 = 585, capped to 365. A +18 day fuzz would be 383.
+      await reviewCard('user-1', 'deck-1', 'card-1', 4, now, 'UTC', () => 0.99);
+
+      expect(upsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({ interval: 365 }),
+        { onConflict: 'user_id,deck_id,card_id' },
+      );
+    });
   });
 
   it('calculates deck progress buckets correctly', async () => {
@@ -648,10 +841,8 @@ describe('Supabase review persistence and queries', () => {
     });
   });
 
-  it('counts "done" by the local calendar day, not the UTC day', async () => {
-    const reviewedAt = '2026-08-29T17:30:00.000Z'; // 00:30 on Aug 30 in GMT+7
-    const localNow = new Date('2026-08-30T00:00:00.000Z'); // 07:00 on Aug 30 in GMT+7
-
+  /** Wires `getDeckProgress` to return one row reviewed at `reviewedAt`. */
+  function mockOneReviewedCard(reviewedAt: string) {
     const mockSelect = vi.fn().mockReturnThis();
     const mockEqUser = vi.fn().mockReturnThis();
     const mockEqDeck = vi.fn().mockResolvedValue({
@@ -682,13 +873,40 @@ describe('Supabase review persistence and queries', () => {
     mockEqUser.mockReturnValue({
       eq: mockEqDeck,
     } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+  }
 
+  it('rolls the study day over at 04:00 local time', async () => {
+    // 00:30 on Aug 30 in GMT+7 still belongs to the Aug 29 study day.
+    mockOneReviewedCard('2026-08-29T17:30:00.000Z');
     const cards = [{ id: 'card-1' }];
 
-    // GMT+7: both timestamps fall on Aug 30 locally.
-    await expect(getDeckProgress('user-1', 'deck-1', cards, localNow, 'Asia/Ho_Chi_Minh')).resolves.toMatchObject({ done: 1 });
-    // UTC: the review is still on Aug 29, so the old behaviour reported nothing.
-    await expect(getDeckProgress('user-1', 'deck-1', cards, localNow, 'UTC')).resolves.toMatchObject({ done: 0 });
+    const justBeforeRollover = new Date('2026-08-29T20:59:00.000Z'); // 03:59 Aug 30 local
+    const justAfterRollover = new Date('2026-08-29T21:01:00.000Z'); // 04:01 Aug 30 local
+
+    await expect(
+      getDeckProgress('user-1', 'deck-1', cards, justBeforeRollover, 'Asia/Ho_Chi_Minh'),
+    ).resolves.toMatchObject({ done: 1 });
+
+    // Both timestamps share a calendar date, so a midnight boundary would still
+    // report 1 here. Only the 04:00 boundary separates the two study days.
+    await expect(
+      getDeckProgress('user-1', 'deck-1', cards, justAfterRollover, 'Asia/Ho_Chi_Minh'),
+    ).resolves.toMatchObject({ done: 0 });
+  });
+
+  it('counts "done" by the local day, not the UTC day', async () => {
+    // 03:00 on Aug 30 local (study day Aug 29) against 04:30 the same morning
+    // (study day Aug 30). In UTC both timestamps are still on Aug 29.
+    mockOneReviewedCard('2026-08-29T20:00:00.000Z');
+    const cards = [{ id: 'card-1' }];
+    const localNow = new Date('2026-08-29T21:30:00.000Z');
+
+    await expect(
+      getDeckProgress('user-1', 'deck-1', cards, localNow, 'Asia/Ho_Chi_Minh'),
+    ).resolves.toMatchObject({ done: 0 });
+    await expect(
+      getDeckProgress('user-1', 'deck-1', cards, localNow, 'UTC'),
+    ).resolves.toMatchObject({ done: 1 });
   });
 
   it('uses each timestamp\'s own offset across a daylight-saving transition', async () => {

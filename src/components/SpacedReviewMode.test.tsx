@@ -71,7 +71,7 @@ describe('DeckList spaced review actions and progress counters', () => {
       <DeckList
         decks={[deck]}
         deckProgressById={{
-          'deck-1': { new: 2, learning: 0, due: 3, mastered: 0, done: 4 },
+          'deck-1': { new: 2, learning: 1, due: 3, mastered: 5, done: 4 },
         }}
         onStartSpacedReview={onStartSpacedReview}
         onSelectDeck={onSelectDeck}
@@ -83,8 +83,10 @@ describe('DeckList spaced review actions and progress counters', () => {
     );
 
     expect(screen.getByText(/2\s*new/i)).toBeInTheDocument();
+    expect(screen.getByText(/1\s*learning/i)).toBeInTheDocument();
     expect(screen.getByText(/3\s*due/i)).toBeInTheDocument();
     expect(screen.getByText(/4\s*done/i)).toBeInTheDocument();
+    expect(screen.getByText(/5\s*mastered/i)).toBeInTheDocument();
 
     const spacedReviewBtn = screen.getByRole('button', { name: /spaced review/i });
     await user.click(spacedReviewBtn);
@@ -282,18 +284,24 @@ describe('SpacedReviewMode session flow', () => {
       { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
       { card: { id: 'c-2', front: 'Gracias', back: 'Thank you' }, review: null },
     ]);
-    vi.mocked(spacedService.reviewCard).mockResolvedValue({
-      id: 'rev-1',
-      userId: 'user-1',
-      deckId: 'deck-1',
-      cardId: 'c-1',
-      status: 'relearning',
-      easeFactor: 2.3,
-      interval: 0,
-      repetitions: 0,
-      dueDate: '2026-08-29T12:00:00.000Z',
-      lastReviewedAt: '2026-08-29T12:00:00.000Z',
-      createdAt: '2026-08-29T12:00:00.000Z',
+    // Again leaves a card in relearning; anything else graduates it. The mock
+    // has to mirror the real service here, because the session decides whether
+    // to requeue from the returned status.
+    vi.mocked(spacedService.reviewCard).mockImplementation(async (_userId, _deckId, cardId, quality) => {
+      const staysInLearning = quality === 1;
+      return {
+        id: `rev-${cardId}`,
+        userId: 'user-1',
+        deckId: 'deck-1',
+        cardId,
+        status: staysInLearning ? 'relearning' : 'review',
+        easeFactor: 2.5,
+        interval: staysInLearning ? 0 : 1,
+        repetitions: staysInLearning ? 0 : 1,
+        dueDate: '2026-08-29T12:00:00.000Z',
+        lastReviewedAt: '2026-08-29T12:00:00.000Z',
+        createdAt: '2026-08-29T12:00:00.000Z',
+      };
     });
 
     const user = userEvent.setup();
@@ -322,6 +330,60 @@ describe('SpacedReviewMode session flow', () => {
     expect(screen.getByText(/easy:\s*1/i)).toBeInTheDocument();
     // Both cards ended on a passing grade, so retention is per card, not per event.
     expect(screen.getByText(/retention:\s*100%/i)).toBeInTheDocument();
+  });
+
+  it('shows distinct previews for a brand new card', async () => {
+    vi.mocked(spacedService.getDueCards).mockResolvedValue([
+      { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
+    ]);
+
+    const user = userEvent.setup();
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
+
+    await user.click(await screen.findByText('Hola'));
+
+    // Again and Hard repeat the learning step; Good graduates to 1 day and Easy
+    // skips ahead to 4. Before the learning-step change all four showed "1d".
+    expect(screen.getByRole('button', { name: /again/i })).toHaveTextContent('<1m');
+    expect(screen.getByRole('button', { name: /hard/i })).toHaveTextContent('<1m');
+    expect(screen.getByRole('button', { name: /good/i })).toHaveTextContent('1d');
+    expect(screen.getByRole('button', { name: /easy/i })).toHaveTextContent('4d');
+  });
+
+  it('requeues a new card rated Hard because it stays in learning', async () => {
+    vi.mocked(spacedService.getDueCards).mockResolvedValue([
+      { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
+    ]);
+    vi.mocked(spacedService.reviewCard).mockImplementation(async (_userId, _deckId, cardId, quality) => ({
+      id: `rev-${cardId}`,
+      userId: 'user-1',
+      deckId: 'deck-1',
+      cardId,
+      status: quality === 2 ? 'learning' : 'review',
+      easeFactor: 2.35,
+      interval: quality === 2 ? 0 : 1,
+      repetitions: quality === 2 ? 0 : 1,
+      dueDate: '2026-08-30T04:00:00.000Z',
+      lastReviewedAt: '2026-08-29T12:00:00.000Z',
+      createdAt: '2026-08-29T12:00:00.000Z',
+    }));
+
+    const user = userEvent.setup();
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
+
+    await user.click(await screen.findByText('Hola'));
+    await user.click(screen.getByRole('button', { name: /hard/i }));
+
+    // Back at the same card, not on the summary.
+    expect(await screen.findByText('Hola')).toBeInTheDocument();
+    expect(screen.queryByText(/session complete/i)).not.toBeInTheDocument();
+
+    // The second Hard is persisted but ends the card's work for this session.
+    await user.click(screen.getByText('Hola'));
+    await user.click(screen.getByRole('button', { name: /hard/i }));
+
+    expect(await screen.findByText(/session complete/i)).toBeInTheDocument();
+    expect(screen.getByText(/hard:\s*2/i)).toBeInTheDocument();
   });
 
   it('uses the persisted review state when an Again card is requeued', async () => {
@@ -396,6 +458,19 @@ describe('SpacedReviewMode session flow', () => {
       vi.mocked(spacedService.getDueCards).mockResolvedValue([
         { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
       ]);
+      vi.mocked(spacedService.reviewCard).mockResolvedValue({
+        id: 'rev-1',
+        userId: 'user-1',
+        deckId: 'deck-1',
+        cardId: 'c-1',
+        status: 'review',
+        easeFactor: 2.5,
+        interval: 1,
+        repetitions: 1,
+        dueDate: '2026-08-30T04:00:00.000Z',
+        lastReviewedAt: '2026-08-29T12:00:00.000Z',
+        createdAt: '2026-08-29T12:00:00.000Z',
+      });
 
       const user = userEvent.setup();
       render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);

@@ -1,7 +1,7 @@
 <div align="center">
   <img src="./public/icon.png" alt="Gemini Flashcards icon" width="96" />
   <h1>Gemini Flashcards</h1>
-  <p>Create, organize, and study AI-generated flashcards with Spaced Repetition (SM-2).</p>
+  <p>Create, organize, and study AI-generated flashcards with Spaced Repetition (SM-2-style).</p>
 
   [![Build](https://img.shields.io/github/actions/workflow/status/kiendoantrung/gemini-flashcards/deploy.yml?branch=main&style=flat-square&label=Build)](https://github.com/kiendoantrung/gemini-flashcards/actions)
   ![Node.js](https://img.shields.io/badge/Node.js-24-3c873a?style=flat-square&logo=node.js)
@@ -12,13 +12,13 @@
 Gemini Flashcards is a React and TypeScript study app backed by Supabase. It
 can generate decks from a topic, extract content from documents, turn
 question-and-answer files into study-ready cards, and schedule long-term memory
-reviews with the SM-2 Spaced Repetition algorithm.
+reviews with an SM-2-inspired spaced repetition scheduler.
 
 ## Contents
 
 - [Features](#features)
 - [Architecture](#architecture)
-- [Spaced Repetition (SM-2)](#spaced-repetition-sm-2)
+- [Spaced Repetition](#spaced-repetition)
 - [Getting started](#getting-started)
 - [Supabase setup](#supabase-setup)
 - [Database migrations and RLS](#database-migrations-and-rls)
@@ -32,7 +32,7 @@ reviews with the SM-2 Spaced Repetition algorithm.
 - Generate flashcard decks from a topic with Google Gemini.
 - Generate decks from PDF, DOC, DOCX, and TXT documents.
 - Import Q&A data from CSV, XLS, XLSX, or JSON files.
-- **Spaced Repetition Mode** powered by the SuperMemo 2 (SM-2) algorithm.
+- **Spaced Repetition Mode** powered by an SM-2-inspired, four-grade scheduler.
 - Dashboard progress badges per deck showing `new`, `due`, and `done` card counts.
 - Classic free-flip study mode and AI-generated multiple-choice quizzes.
 - Authenticate with email/password or Google.
@@ -52,9 +52,20 @@ React/Vite client
 The browser uses the Supabase publishable/anon key. Gemini requests go through
 the Edge Function so `GOOGLE_AI_KEY` remains a server-side secret.
 
-## Spaced Repetition (SM-2)
+## Spaced Repetition
 
-The app features an adaptive review scheduling engine based on the **SuperMemo 2 (SM-2)** algorithm to optimize long-term memory retention.
+The app uses an **SM-2-inspired, four-grade scheduler**. It borrows SM-2's core
+idea — an ease factor that rises and falls with recall quality, and an interval
+that grows by that factor — but it is not the textbook SuperMemo 2 formula, and
+the differences are deliberate:
+
+| | Textbook SM-2 | This app |
+|---|---|---|
+| Grades | 0–5 | 1–4 (Again / Hard / Good / Easy) |
+| Ease update | `EF' = EF + (0.1 − (5−q)(0.08 + (5−q)0.02))` | Fixed steps: Again −0.2, Hard −0.15, Easy +0.15 |
+| Hard / Easy | No effect on the interval beyond ease | Hard stretches by 1.2×, Easy by 1.3× on top of ease |
+| Bounds | None | Ease 1.3–3.0, interval ≤ 365 days |
+| Jitter | None | ±5% on intervals of 2+ days |
 
 ### Recall Ratings & Scheduling
 
@@ -67,12 +78,79 @@ During a Spaced Review session, cards are flipped to reveal the answer, and user
 | **Good** | 3 | Recalled normally; ease factor unchanged. Interval expands by the deck's ease factor. |
 | **Easy** | 4 | Recalled effortlessly; ease factor increases by 0.15. Interval expands with a 1.3x bonus. |
 
+### Learning Steps
+
+A card that has never graduated is in the `learning` state; a card that had a real
+interval and then failed is `relearning`. Both are re-queued in the same session
+(once per card) and show `<1m` on the rating buttons.
+
+The first grade on a new card is where the four buttons differ most:
+
+| First grade | Result |
+|---|---|
+| **Again** | Stays in `learning`, due immediately |
+| **Hard** | Stays in `learning`, due immediately |
+| **Good** | Graduates to `review`, 1 day |
+| **Easy** | Graduates to `review`, 4 days |
+
+### Interval Ceiling and Fuzz
+
+Ease is capped at **3.0** and the interval at **365 days**, so a card answered Easy
+repeatedly cannot drift out to multi-year gaps.
+
+Intervals of 2 days or more are then randomised by up to **5%** (at least one day)
+when they are saved, so cards learned on the same day do not come due as one clump
+forever. The rating buttons show the un-fuzzed interval; only the stored schedule is
+jittered.
+
+### Day Boundary
+
+The study day rolls over at **04:00 local time**, not midnight. Reviewing at 01:00
+still counts as the previous day, so the `done` counter keeps climbing and the
+daily new-card budget does not refresh mid-session.
+
+Due dates are aligned to that boundary rather than being "the same clock time N
+days later": a card rated at 23:00 with a 1-day interval becomes due at 04:00 the
+next morning, not at 23:00 the following evening.
+
 ### Dashboard Progress Indicators
 
-Each deck displays three status counters:
+Each deck displays five status counters:
 - 🔵 **`new`**: Cards that have never been reviewed.
+- 🟣 **`learning`**: Cards in their first learning steps, or cards that lapsed and are
+  being relearned. They come back inside the current session.
 - 🟡 **`due`**: Cards whose review date is due today or earlier.
 - 🟢 **`done`**: Cards reviewed today whose next scheduled review is in the future.
+- 🟦 **`mastered`**: Cards whose current interval has reached
+  `MASTERED_INTERVAL_DAYS` (21 days), i.e. scheduled a month or more out.
+
+`mastered` is a subset of the scheduled cards rather than a separate pile — a card
+counted as mastered also counts as `done` once reviewed today.
+
+### Statistics
+
+The **Statistics** button on the dashboard opens a page built from `review_logs`,
+covering the last 30 study days:
+
+- **Reviews / Retention / Active days / Streak** summary tiles. Retention counts a
+  rating as recalled when it was not *Again*, matching the session summary so the two
+  screens never disagree.
+- **Reviews per day** — a stacked bar chart splitting recalled ratings from *Again*.
+  Days are bucketed with the same 04:00 boundary as scheduling.
+- **Next 7 days** — cards becoming due, with anything overdue folded onto today
+  rather than hidden. Cards whose deck entry was deleted are skipped, since cards live
+  in the deck's JSONB column and their `card_reviews` rows outlive them.
+- **Retention by deck** — per-deck retention bars, coloured green ≥ 80%, amber ≥ 60%,
+  red below. Decks deleted after their reviews were logged are filtered out.
+
+The streak does not break just because today has no reviews yet — it starts counting
+from yesterday in that case, so the number does not read `0` every morning. The walk
+stops at the oldest day in the window, so a streak longer than 30 days is reported as
+a lower bound.
+
+Aggregation runs in JavaScript over a bounded window rather than in SQL. A heavy user
+produces a few thousand rows per month, which is a small response; if that changes,
+this should move into an RPC.
 
 ### Session Summary
 
@@ -80,6 +158,8 @@ Upon completing a session, the app presents a summary report including:
 - Total cards reviewed.
 - Breakdown count of ratings (Again / Hard / Good / Easy).
 - Calculated **Retention Rate** percentage.
+- An **Undo** action that reverts the last rating and restores the card to its prior
+  state.
 
 ## Getting started
 
@@ -199,7 +279,7 @@ The GitHub Actions workflow runs on pushes to `main`:
 src/
   components/       React components, study modes, and SpacedReviewMode
   hooks/            Application state hooks (useDashboardState)
-  services/         SM-2 scheduler, Supabase queries, file, and AI services
+  services/         SM-2-inspired scheduler, Supabase queries, file, and AI services
   types/            TypeScript domain types (Flashcard, CardReview, DeckProgress)
   lib/              Shared clients and utilities
   test/             Vitest test setup and DOM matchers

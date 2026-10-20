@@ -11,11 +11,47 @@ const MASTERED_INTERVAL_DAYS = 21;
 const DAILY_NEW_CARD_LIMIT = 20;
 
 const MIN_EASE_FACTOR = 1.3;
+/**
+ * Ceiling on ease. Ease compounds, so a card answered Easy a few times in a row
+ * would otherwise reach intervals in the thousands of days before the interval
+ * cap below ever binds. Anki allows up to 5.0; with a one-year interval ceiling
+ * anything past 3.0 has no practical effect, so the tighter bound is used.
+ */
+const MAX_EASE_FACTOR = 3.0;
 const FIRST_INTERVAL_DAYS = 1;
+/**
+ * Easy on a card that is still learning skips the 1-day step entirely, so the
+ * first grade on a new card actually differs: Again and Hard repeat the step,
+ * Good graduates to 1 day, Easy graduates to 4.
+ */
+const EASY_LEARNING_INTERVAL_DAYS = 4;
 const SECOND_INTERVAL_DAYS = 6;
 /** Hard barely grows the current interval; Easy adds a flat bonus on top of ease. */
 const HARD_INTERVAL_MULTIPLIER = 1.2;
 const EASY_INTERVAL_BONUS = 1.3;
+/**
+ * A card is never scheduled further out than this. Without a ceiling a mature
+ * card reaches multi-year intervals, which for a personal deck means it is
+ * effectively gone.
+ */
+const MAX_INTERVAL_DAYS = 365;
+/**
+ * Intervals are randomised by up to 5% (at least one day) so that cards learned
+ * on the same day do not come due as one clump forever. Below this threshold
+ * fuzzing is pointless: 5% of one day rounds to zero.
+ */
+const FUZZ_RATIO = 0.05;
+const FUZZ_MIN_INTERVAL_DAYS = 2;
+
+/**
+ * The study day rolls over at 04:00 local time, not midnight (the Anki
+ * convention). Someone reviewing at 01:00 is still in the previous day's
+ * session: their "done" count keeps climbing and the daily new-card budget
+ * does not silently refresh while they are still studying.
+ */
+export const DAY_ROLLOVER_HOUR = 4;
+
+const HOUR_MS = 60 * 60 * 1000;
 
 export interface DueCard {
   card: Flashcard;
@@ -52,17 +88,25 @@ function mapRowToCardReview(row: CardReviewRow): CardReview {
   };
 }
 
+/**
+ * `now` and `timeZone` both default to the ambient values for convenience in
+ * the UI, but the result now depends on the timezone, so tests must pass both
+ * explicitly or they will pass locally and fail on a machine in another zone.
+ */
 export function calculateNextReview(
   current: ReviewState,
   quality: ReviewQuality,
   now: Date = new Date(),
+  timeZone: string = getTimeZone(),
 ): ReviewState & { dueDate: string; lastReviewedAt: string } {
   const nowIso = now.toISOString();
 
   if (quality === 1) {
     const easeFactor = Math.max(MIN_EASE_FACTOR, Math.round((current.easeFactor - 0.2) * 100) / 100);
     return {
-      status: 'relearning',
+      // A card that has never graduated is still learning; only a card that
+      // once had a real interval and then failed is relearning.
+      status: current.repetitions === 0 ? 'learning' : 'relearning',
       repetitions: 0,
       interval: 0,
       easeFactor,
@@ -75,7 +119,7 @@ export function calculateNextReview(
   if (quality === 2) {
     easeFactor = Math.max(MIN_EASE_FACTOR, Math.round((current.easeFactor - 0.15) * 100) / 100);
   } else if (quality === 4) {
-    easeFactor = Math.round((current.easeFactor + 0.15) * 100) / 100;
+    easeFactor = Math.min(MAX_EASE_FACTOR, Math.round((current.easeFactor + 0.15) * 100) / 100);
   }
 
   // Four-grade, SM-2-inspired schedule: Hard lowers ease, Good preserves it,
@@ -85,8 +129,20 @@ export function calculateNextReview(
   // the same delay as Good while still costing ease.
   let interval: number;
   if (current.repetitions === 0) {
-    // Sub-day learning steps are not modelled, so every first success waits a day.
-    interval = FIRST_INTERVAL_DAYS;
+    if (quality === 2) {
+      // Hard repeats the learning step instead of graduating. Before this, a
+      // new card's first Hard, Good and Easy all produced the same one-day
+      // interval, so the three buttons were indistinguishable.
+      return {
+        status: 'learning',
+        repetitions: 0,
+        interval: 0,
+        easeFactor,
+        dueDate: nowIso,
+        lastReviewedAt: nowIso,
+      };
+    }
+    interval = quality === 4 ? EASY_LEARNING_INTERVAL_DAYS : FIRST_INTERVAL_DAYS;
   } else if (current.repetitions === 1) {
     if (quality === 2) {
       interval = Math.round(SECOND_INTERVAL_DAYS / HARD_INTERVAL_MULTIPLIER);
@@ -106,20 +162,42 @@ export function calculateNextReview(
     }
   }
 
-  const dueDate = new Date(now.getTime() + interval * 24 * 60 * 60 * 1000).toISOString();
+  const dueDate = dueDateFor(now, Math.min(interval, MAX_INTERVAL_DAYS), timeZone);
 
   return {
     status: 'review',
     repetitions: current.repetitions + 1,
-    interval,
+    interval: Math.min(interval, MAX_INTERVAL_DAYS),
     easeFactor,
     dueDate,
     lastReviewedAt: nowIso,
   };
 }
 
+/**
+ * Spreads an interval by up to FUZZ_RATIO so cards sharing a learn date drift
+ * apart instead of coming due together forever. The jitter is at least one day
+ * because 5% of a short interval rounds to zero, which would leave small
+ * intervals un-fuzzed and still clumped.
+ *
+ * Kept out of calculateNextReview on purpose: the review screen recomputes four
+ * interval previews on every render, and a random result there would make the
+ * "8d" badges flicker. Anki also shows the un-fuzzed number in the preview.
+ */
+function fuzzInterval(interval: number, random: () => number): number {
+  if (interval < FUZZ_MIN_INTERVAL_DAYS) {
+    return interval;
+  }
+
+  const spread = Math.max(1, Math.round(interval * FUZZ_RATIO));
+  const offset = Math.floor(random() * (spread * 2 + 1)) - spread;
+  return Math.min(MAX_INTERVAL_DAYS, Math.max(1, interval + offset));
+}
+
 export function formatNextInterval(next: Pick<ReviewState, 'interval' | 'status'>): string {
-  return next.status === 'relearning' && next.interval === 0 ? '<1m' : `${next.interval}d`;
+  const isLearningStep =
+    (next.status === 'learning' || next.status === 'relearning') && next.interval === 0;
+  return isLearningStep ? '<1m' : `${next.interval}d`;
 }
 
 export async function getDueCards(
@@ -127,7 +205,7 @@ export async function getDueCards(
   deckId: string,
   allCards: Flashcard[],
   now: Date = new Date(),
-  timeZone: string = currentTimeZone(),
+  timeZone: string = getTimeZone(),
 ): Promise<DueCard[]> {
   const { data, error } = await supabase
     .from('card_reviews')
@@ -174,11 +252,11 @@ export async function getDueCards(
   // this, reopening the deck would hand out another 20 unseen cards and let a
   // user burn through a large deck in one sitting.
   const cardIds = new Set(allCards.map((card) => card.id));
-  const todayKey = localDayKey(now, timeZone);
+  const todayKey = studyDayKey(now, timeZone);
   const introducedToday = rows.filter(
     (row) =>
       cardIds.has(row.card_id) &&
-      localDayKey(new Date(row.created_at), timeZone) === todayKey,
+      studyDayKey(new Date(row.created_at), timeZone) === todayKey,
   ).length;
   const remainingNewBudget = Math.max(0, DAILY_NEW_CARD_LIMIT - introducedToday);
 
@@ -193,6 +271,9 @@ export async function reviewCard(
   cardId: string,
   quality: ReviewQuality,
   now: Date = new Date(),
+  timeZone: string = getTimeZone(),
+  /** Injectable so tests can pin the fuzz instead of asserting a range. */
+  random: () => number = Math.random,
 ): Promise<CardReview> {
   const { data: existingData, error: fetchError } = await supabase
     .from('card_reviews')
@@ -224,7 +305,13 @@ export async function reviewCard(
         repetitions: 0,
       };
 
-  const nextState = calculateNextReview(currentState, quality, now);
+  const nextState = calculateNextReview(currentState, quality, now, timeZone);
+
+  // Fuzz here rather than in calculateNextReview: this is the value that gets
+  // persisted, while the UI preview must stay stable across re-renders.
+  const interval = fuzzInterval(nextState.interval, random);
+  const dueDate =
+    interval === nextState.interval ? nextState.dueDate : dueDateFor(now, interval, timeZone);
 
   const upsertPayload = {
     user_id: userId,
@@ -232,9 +319,9 @@ export async function reviewCard(
     card_id: cardId,
     status: nextState.status,
     ease_factor: nextState.easeFactor,
-    interval: nextState.interval,
+    interval,
     repetitions: nextState.repetitions,
-    due_date: nextState.dueDate,
+    due_date: dueDate,
     last_reviewed_at: nextState.lastReviewedAt,
   };
 
@@ -266,9 +353,10 @@ export async function reviewCard(
     prev_last_reviewed_at: existingReview?.lastReviewedAt ?? null,
     next_status: nextState.status,
     next_ease_factor: nextState.easeFactor,
-    next_interval: nextState.interval,
+    // The fuzzed values, so the log matches the row that was actually written.
+    next_interval: interval,
     next_repetitions: nextState.repetitions,
-    next_due_date: nextState.dueDate,
+    next_due_date: dueDate,
     reviewed_at: nextState.lastReviewedAt,
   });
 
@@ -390,29 +478,118 @@ export async function undoLastReview(
   };
 }
 
-function currentTimeZone(): string {
+export function getTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 /**
- * Calendar day of `date` in the given timezone, expressed as YYYY-MM-DD.
- * Comparing UTC days directly would put a 01:00 review in GMT+7 on the
- * previous day. A timezone name is used instead of a fixed offset because
- * the offset changes across a daylight-saving transition, and the two
- * timestamps being compared can sit on different sides of it.
+ * Formatters are cached because constructing one costs about ten times as much
+ * as formatting with an existing one, and the review screen recomputes four
+ * interval previews on every render. The key set is tiny: a user has one or two
+ * timezones per session.
  */
-function localDayKey(date: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
+const formatterCache = new Map<string, Intl.DateTimeFormat>();
+
+function formatterFor(timeZone: string, withTime: boolean): Intl.DateTimeFormat {
+  const cacheKey = `${withTime ? 'datetime' : 'date'}:${timeZone}`;
+  const cached = formatterCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const formatter = new Intl.DateTimeFormat(
+    'en-US',
+    withTime
+      ? {
+          timeZone,
+          hour12: false,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }
+      : { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' },
+  );
+  formatterCache.set(cacheKey, formatter);
+  return formatter;
+}
+
+/**
+ * Logical study day of `date` in the given timezone, expressed as YYYY-MM-DD,
+ * with the day starting at DAY_ROLLOVER_HOUR rather than midnight.
+ *
+ * Shifting the instant back by the rollover amount moves the boundary without
+ * any wall-clock arithmetic, which keeps it correct across a daylight-saving
+ * transition: the shift is applied to an instant, then read in the timezone.
+ *
+ * A timezone name is used instead of a fixed offset because the offset changes
+ * across a DST transition, and the two timestamps being compared can sit on
+ * different sides of it.
+ */
+export function studyDayKey(date: Date, timeZone: string): string {
+  const shifted = new Date(date.getTime() - DAY_ROLLOVER_HOUR * HOUR_MS);
+  const parts = formatterFor(timeZone, false).formatToParts(shifted);
 
   const part = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((candidate) => candidate.type === type)?.value ?? '';
 
   return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+/** Offset of `timeZone` at `date`, in milliseconds (local wall clock minus UTC). */
+function timeZoneOffsetMs(date: Date, timeZone: string): number {
+  const parts = formatterFor(timeZone, true).formatToParts(date);
+
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((candidate) => candidate.type === type)?.value ?? 0);
+
+  // Some engines report midnight as hour 24 under hour12: false.
+  const wallClock = Date.UTC(
+    part('year'),
+    part('month') - 1,
+    part('day'),
+    part('hour') % 24,
+    part('minute'),
+    part('second'),
+  );
+
+  return wallClock - date.getTime();
+}
+
+/** Adds whole calendar days to a YYYY-MM-DD key. */
+export function addDaysToDayKey(dayKey: string, days: number): string {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day));
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
+}
+
+/** The instant at which the logical day `dayKey` starts in `timeZone`. */
+function dayStartForKey(dayKey: string, timeZone: string): Date {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  const wallClock = Date.UTC(year, month - 1, day, DAY_ROLLOVER_HOUR, 0, 0);
+
+  // Two passes: the first offset is read at the uncorrected instant, which is
+  // the wrong side of a DST transition; the second pass uses the corrected one.
+  let instant = wallClock;
+  for (let pass = 0; pass < 2; pass += 1) {
+    instant = wallClock - timeZoneOffsetMs(new Date(instant), timeZone);
+  }
+
+  return new Date(instant);
+}
+
+/**
+ * Due at the start of the study day `interval` days from now, not `interval`
+ * × 24h after the rating. Without this a card rated at 23:00 stays hidden until
+ * 23:00 days later, so a user who studies in the evening watches due cards
+ * drift out of their study window one day at a time.
+ */
+function dueDateFor(now: Date, interval: number, timeZone: string): string {
+  const targetKey = addDaysToDayKey(studyDayKey(now, timeZone), interval);
+  return dayStartForKey(targetKey, timeZone).toISOString();
 }
 
 function emptyProgress(): DeckProgress {
@@ -446,7 +623,7 @@ function countProgress(
   let doneCount = 0;
 
   const nowTime = now.getTime();
-  const todayKey = localDayKey(now, timeZone);
+  const todayKey = studyDayKey(now, timeZone);
 
   for (const review of relevantReviews) {
     if (review.status === 'learning' || review.status === 'relearning') {
@@ -465,7 +642,7 @@ function countProgress(
     if (
       review.lastReviewedAt &&
       dueTime > nowTime &&
-      localDayKey(new Date(review.lastReviewedAt), timeZone) === todayKey
+      studyDayKey(new Date(review.lastReviewedAt), timeZone) === todayKey
     ) {
       doneCount++;
     }
@@ -499,7 +676,7 @@ export async function getDeckProgress(
   deckId: string,
   cards: Pick<Flashcard, 'id'>[],
   now: Date = new Date(),
-  timeZone: string = currentTimeZone(),
+  timeZone: string = getTimeZone(),
 ): Promise<DeckProgress> {
   if (cards.length === 0) {
     return emptyProgress();
@@ -527,7 +704,7 @@ export async function getDeckProgressBatch(
   userId: string,
   decks: Array<{ id: string; cards: Pick<Flashcard, 'id'>[] }>,
   now: Date = new Date(),
-  timeZone: string = currentTimeZone(),
+  timeZone: string = getTimeZone(),
 ): Promise<Record<string, DeckProgress>> {
   const deckIds = decks.map((deck) => deck.id);
   if (deckIds.length === 0) {
