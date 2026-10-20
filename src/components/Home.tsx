@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion, type Variants } from 'framer-motion';
 import {
   Brain,
   Zap,
@@ -23,17 +23,17 @@ import { Footer } from './Footer';
 /*  Motion helpers                                                     */
 /* ------------------------------------------------------------------ */
 
-const fadeUp = {
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 28 },
   visible: { opacity: 1, y: 0 },
 };
 
-const scaleIn = {
+const scaleIn: Variants = {
   hidden: { opacity: 0, scale: 0.92 },
   visible: { opacity: 1, scale: 1 },
 };
 
-const staggerContainer = {
+const staggerContainer: Variants = {
   hidden: {},
   visible: {
     transition: {
@@ -54,7 +54,7 @@ function Reveal({
   delay = 0,
 }: {
   children: React.ReactNode;
-  variants?: typeof fadeUp;
+  variants?: Variants;
   className?: string;
   delay?: number;
 }) {

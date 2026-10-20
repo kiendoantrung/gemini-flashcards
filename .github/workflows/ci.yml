@@ -48,11 +48,9 @@ jobs:
         run: npm run lint
 
       - name: Typecheck
-        # NON-BLOCKING UNTIL PHASE 0 IS COMPLETE.
-        # `vite build` does not typecheck, so 6 pre-existing errors currently ship
-        # to production unnoticed. Fix them (docs/code-review/process.md, CR-1)
-        # and remove `continue-on-error` in that same PR.
-        continue-on-error: true
+        # Blocking. `vite build` does not typecheck, so before this was enforced
+        # the 6 baseline errors shipped to production unnoticed. They are fixed
+        # as of this workflow change; keep this blocking so they cannot return.
         run: npm run typecheck
 
       - name: Test
