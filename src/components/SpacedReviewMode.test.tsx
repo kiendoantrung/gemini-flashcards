@@ -549,6 +549,30 @@ describe('SpacedReviewMode session flow', () => {
       expect(spacedService.getDueCards).toHaveBeenCalledTimes(2);
     });
 
+    it('resyncs from the server when the card was deleted from the deck', async () => {
+      // Undo cannot restore state for a card that no longer exists, so the
+      // session should reload rather than pretend the card came back.
+      vi.mocked(spacedService.getDueCards)
+        .mockResolvedValueOnce([{ card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null }])
+        .mockResolvedValueOnce([]);
+      vi.mocked(spacedService.reviewCard).mockResolvedValue({} as CardReview);
+      vi.mocked(spacedService.undoLastReview).mockResolvedValue({
+        cardId: 'c-1',
+        review: null,
+        cardMissing: true,
+      });
+
+      const user = userEvent.setup();
+      render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
+
+      await user.click(await screen.findByText('Hola'));
+      await user.click(screen.getByRole('button', { name: /good/i }));
+      await user.click(await screen.findByRole('button', { name: /undo last rating/i }));
+
+      expect(await screen.findByText(/no cards are due/i)).toBeInTheDocument();
+      expect(spacedService.getDueCards).toHaveBeenCalledTimes(2);
+    });
+
     it('surfaces an error when the undo call fails', async () => {
       vi.mocked(spacedService.getDueCards).mockResolvedValue([
         { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },

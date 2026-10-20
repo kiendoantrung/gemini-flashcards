@@ -371,6 +371,11 @@ export interface UndoResult {
   cardId: string;
   /** Null when the undone rating was the card's first one: it is new again. */
   review: CardReview | null;
+  /**
+   * True when the card had already been removed from the deck. Nothing was
+   * restored; the stale review row was deleted instead.
+   */
+  cardMissing?: boolean;
 }
 
 interface ReviewLogRow {
@@ -382,6 +387,27 @@ interface ReviewLogRow {
   prev_repetitions: number;
   prev_due_date: string | null;
   prev_last_reviewed_at: string | null;
+}
+
+/**
+ * Whether a card is still part of its deck. Cards live in the deck's `cards`
+ * JSONB column rather than their own table, so deleting one leaves any
+ * `card_reviews` row behind.
+ */
+async function deckHasCard(userId: string, deckId: string, cardId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('decks')
+    .select('cards')
+    .eq('id', deckId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const cards = (data as { cards?: { id?: string }[] } | null)?.cards;
+  return Array.isArray(cards) && cards.some((card) => card?.id === cardId);
 }
 
 /**
@@ -414,7 +440,24 @@ export async function undoLastReview(
   const log = data as ReviewLogRow;
   const wasFirstReview = log.prev_status === 'new';
 
-  if (wasFirstReview) {
+  // The card may have been deleted from the deck between the rating and the
+  // undo. Restoring its state would recreate an orphan `card_reviews` row that
+  // nothing can ever read, so check first and clean up instead.
+  const cardExists = await deckHasCard(userId, deckId, log.card_id);
+  let restoredReview: CardReview | null = null;
+
+  if (!cardExists) {
+    const { error: cleanupError } = await supabase
+      .from('card_reviews')
+      .delete()
+      .eq('user_id', userId)
+      .eq('deck_id', deckId)
+      .eq('card_id', log.card_id);
+
+    if (cleanupError) {
+      throw cleanupError;
+    }
+  } else if (wasFirstReview) {
     const { error: deleteError } = await supabase
       .from('card_reviews')
       .delete()
@@ -446,6 +489,20 @@ export async function undoLastReview(
     if (restoreError) {
       throw restoreError;
     }
+
+    restoredReview = {
+      id: '',
+      userId,
+      deckId,
+      cardId: log.card_id,
+      status: log.prev_status,
+      easeFactor: Number(log.prev_ease_factor),
+      interval: log.prev_interval,
+      repetitions: log.prev_repetitions,
+      dueDate: log.prev_due_date ?? now.toISOString(),
+      lastReviewedAt: log.prev_last_reviewed_at,
+      createdAt: now.toISOString(),
+    };
   }
 
   const { error: markError } = await supabase
@@ -458,24 +515,11 @@ export async function undoLastReview(
     throw markError;
   }
 
-  return {
-    cardId: log.card_id,
-    review: wasFirstReview
-      ? null
-      : {
-          id: '',
-          userId,
-          deckId,
-          cardId: log.card_id,
-          status: log.prev_status,
-          easeFactor: Number(log.prev_ease_factor),
-          interval: log.prev_interval,
-          repetitions: log.prev_repetitions,
-          dueDate: log.prev_due_date ?? now.toISOString(),
-          lastReviewedAt: log.prev_last_reviewed_at,
-          createdAt: now.toISOString(),
-        },
-  };
+  const result: UndoResult = { cardId: log.card_id, review: restoredReview };
+  if (!cardExists) {
+    result.cardMissing = true;
+  }
+  return result;
 }
 
 export function getTimeZone(): string {
