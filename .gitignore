@@ -23,7 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
-package-lock.json
+# package-lock.json is committed on purpose: CI installs with `npm ci`, which
+# needs a lockfile to be reproducible.
 .env
 supabase/.temp/
 .worktrees/
