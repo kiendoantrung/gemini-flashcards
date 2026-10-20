@@ -240,15 +240,41 @@ an authenticated Supabase session, validates its input, and calls the
 The database schema and migrations are tracked in `supabase/migrations/`:
 - [`20260809151507_initial_schema.sql`](./supabase/migrations/20260809151507_initial_schema.sql): Initial tables (`decks`, `profiles`, `deck_likes`, avatars storage).
 - [`20260829000000_card_reviews.sql`](./supabase/migrations/20260829000000_card_reviews.sql): Table for spaced repetition state (`card_reviews`), indexing on `(user_id, deck_id, due_date)`, unique constraints on `(user_id, deck_id, card_id)`, and Row Level Security (RLS) policies.
+- [`20261019120000_card_reviews_hardening.sql`](./supabase/migrations/20261019120000_card_reviews_hardening.sql): `updated_at` plus trigger, and stricter write policies. Idempotent.
+- [`20261019130000_review_logs.sql`](./supabase/migrations/20261019130000_review_logs.sql): Append-only rating log backing undo and the statistics page. No `DELETE` policy — undo sets `undone_at`.
+- [`20261020140000_review_logs_retention.sql`](./supabase/migrations/20261020140000_review_logs_retention.sql): Index on `reviewed_at` and `prune_review_logs(keep_days, batch_size)`. Creates no data changes and deletes nothing.
 
-Both `decks` and `card_reviews` tables have RLS enabled with separate `SELECT`, `INSERT`, `UPDATE`,
-and `DELETE` policies, restricting access to rows owned by `auth.uid() = user_id`.
+All tables have RLS enabled with policies restricting access to rows owned by
+`auth.uid() = user_id`.
 
 To apply pending migrations to your linked Supabase project:
 
 ```bash
 npx supabase db push
 ```
+
+### Trimming `review_logs`
+
+`review_logs` gains one row per rating and has no built-in expiry, so an active
+project accumulates rows indefinitely. Nothing is deleted automatically: the
+migration only provides a batched function, and scheduling it is a separate,
+opt-in decision.
+
+```sql
+-- Deletes up to 5000 rows older than a year. Call until it returns 0.
+select public.prune_review_logs(365, 5000);
+```
+
+`keep_days` has a floor of 90 — the statistics page reads a 30-day window and
+undo reads the newest row of a deck, so anything shorter is rejected rather
+than silently destroying history. The function is `SECURITY DEFINER` and
+executable by `service_role` only; `anon` and `authenticated` are revoked.
+
+To schedule it with `pg_cron`, follow
+[`supabase/maintenance/2026-10-20-prune-review-logs.sql`](./supabase/maintenance/2026-10-20-prune-review-logs.sql),
+which walks through inspecting the table, a dry run, a manual prune, and the
+cron registration. Files in `supabase/maintenance/` are **not** run by
+`supabase db push`.
 
 ## File processing
 

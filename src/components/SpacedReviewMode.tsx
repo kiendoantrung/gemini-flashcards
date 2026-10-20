@@ -210,6 +210,14 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
         return;
       }
 
+      if (restored.cardMissing) {
+        // The card was deleted from the deck while this session was open, so
+        // there is no state to put back. Resync from the server instead.
+        setRatedActions([]);
+        await fetchDueCards();
+        return;
+      }
+
       setQueue((prev) =>
         prev
           .slice(0, action.queueLengthBefore)

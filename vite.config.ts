@@ -1,4 +1,6 @@
-import { defineConfig } from 'vite';
+// `vitest/config` re-exports Vite's defineConfig with the `test` key typed in;
+// importing it from `vite` makes `test` an unknown property.
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({

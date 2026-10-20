@@ -232,8 +232,8 @@ describe('Supabase review persistence and queries', () => {
     const mockEqUser = vi.fn().mockReturnThis();
     const mockEqDeck = vi.fn().mockResolvedValue({ data: [], error: null });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof supabase.from>);
-    mockSelect.mockReturnValue({ eq: mockEqUser } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
-    mockEqUser.mockReturnValue({ eq: mockEqDeck } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+    mockSelect.mockReturnValue({ eq: mockEqUser });
+    mockEqUser.mockReturnValue({ eq: mockEqDeck });
 
     await expect(getDueCards('user-1', 'deck-1', [])).resolves.toEqual([]);
   });
@@ -251,8 +251,8 @@ describe('Supabase review persistence and queries', () => {
       error: null,
     });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof supabase.from>);
-    mockSelect.mockReturnValue({ eq: mockEqUser } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
-    mockEqUser.mockReturnValue({ eq: mockEqDeck } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+    mockSelect.mockReturnValue({ eq: mockEqUser });
+    mockEqUser.mockReturnValue({ eq: mockEqDeck });
 
     const queue = await getDueCards(
       'user-1',
@@ -279,8 +279,8 @@ describe('Supabase review persistence and queries', () => {
       error: null,
     });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof supabase.from>);
-    mockSelect.mockReturnValue({ eq: mockEqUser } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
-    mockEqUser.mockReturnValue({ eq: mockEqDeck } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+    mockSelect.mockReturnValue({ eq: mockEqUser });
+    mockEqUser.mockReturnValue({ eq: mockEqDeck });
 
     const queue = await getDueCards('user-1', 'deck-1', [{ id: 'card-1', front: 'A', back: 'a' }], now);
 
@@ -314,8 +314,8 @@ describe('Supabase review persistence and queries', () => {
       const mockEqUser = vi.fn().mockReturnThis();
       const mockEqDeck = vi.fn().mockResolvedValue({ data: rows, error: null });
       vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof supabase.from>);
-      mockSelect.mockReturnValue({ eq: mockEqUser } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
-      mockEqUser.mockReturnValue({ eq: mockEqDeck } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+      mockSelect.mockReturnValue({ eq: mockEqUser });
+      mockEqUser.mockReturnValue({ eq: mockEqDeck });
     };
 
     it('subtracts the cards already introduced today from the budget', async () => {
@@ -424,10 +424,10 @@ describe('Supabase review persistence and queries', () => {
     } as unknown as ReturnType<typeof supabase.from>);
     mockSelect.mockReturnValue({
       eq: mockEqUser,
-    } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    });
     mockEqUser.mockReturnValue({
       eq: mockEqDeck,
-    } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+    });
 
     const cards = [
       { id: 'relearn', front: 'A', back: 'a' },
@@ -762,10 +762,10 @@ describe('Supabase review persistence and queries', () => {
     } as unknown as ReturnType<typeof supabase.from>);
     mockSelect.mockReturnValue({
       eq: mockEqUser,
-    } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    });
     mockEqUser.mockReturnValue({
       eq: mockEqDeck,
-    } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+    });
 
     const progress = await getDeckProgress(
       'user-1',
@@ -824,10 +824,10 @@ describe('Supabase review persistence and queries', () => {
     } as unknown as ReturnType<typeof supabase.from>);
     mockSelect.mockReturnValue({
       eq: mockEqUser,
-    } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    });
     mockEqUser.mockReturnValue({
       eq: mockEqDeck,
-    } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+    });
 
     const progress = await getDeckProgress('user-1', 'deck-1', [{ id: 'kept' }], now, 'UTC');
 
@@ -869,10 +869,10 @@ describe('Supabase review persistence and queries', () => {
     } as unknown as ReturnType<typeof supabase.from>);
     mockSelect.mockReturnValue({
       eq: mockEqUser,
-    } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    });
     mockEqUser.mockReturnValue({
       eq: mockEqDeck,
-    } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+    });
   }
 
   it('rolls the study day over at 04:00 local time', async () => {
@@ -941,10 +941,10 @@ describe('Supabase review persistence and queries', () => {
     } as unknown as ReturnType<typeof supabase.from>);
     mockSelect.mockReturnValue({
       eq: mockEqUser,
-    } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    });
     mockEqUser.mockReturnValue({
       eq: mockEqDeck,
-    } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+    });
 
     await expect(
       getDeckProgress('user-1', 'deck-1', [{ id: 'card-1' }], localNow, 'America/New_York'),
@@ -991,10 +991,10 @@ describe('Supabase review persistence and queries', () => {
     } as unknown as ReturnType<typeof supabase.from>);
     mockSelect.mockReturnValue({
       eq: mockEqUser,
-    } as unknown as ReturnType<ReturnType<typeof supabase.from>['select']>);
+    });
     mockEqUser.mockReturnValue({
       in: mockIn,
-    } as unknown as ReturnType<ReturnType<ReturnType<typeof supabase.from>['select']>['eq']>);
+    });
 
     const progress = await getDeckProgressBatch(
       'user-1',
@@ -1038,11 +1038,15 @@ describe('Supabase review persistence and queries', () => {
     };
 
     /**
-     * Wires `from()` for both tables used by undo. `review_logs` needs two
+     * Wires `from()` for the tables used by undo. `review_logs` needs two
      * shapes (select for the newest log, update to mark it undone), so the
-     * returned object carries both.
+     * returned object carries both. `deckCards` is what the deck's `cards`
+     * JSONB holds; pass null to simulate a deck that no longer exists.
      */
-    function mockUndoTables(data: LogFixture | null) {
+    function mockUndoTables(
+      data: LogFixture | null,
+      deckCards: { id: string }[] | null = [{ id: 'card-1' }],
+    ) {
       const markUndone = vi.fn().mockResolvedValue({ error: null });
       const updateEqUser = vi.fn().mockReturnValue({ eq: markUndone });
       const updateEqId = vi.fn().mockReturnValue({ eq: updateEqUser });
@@ -1062,6 +1066,14 @@ describe('Supabase review persistence and queries', () => {
       const remove = vi.fn().mockReturnValue({ eq: deleteUser });
       const upsert = vi.fn().mockResolvedValue({ error: null });
 
+      const deckMaybeSingle = vi.fn().mockResolvedValue({
+        data: deckCards === null ? null : { cards: deckCards },
+        error: null,
+      });
+      const deckEqUser = vi.fn().mockReturnValue({ maybeSingle: deckMaybeSingle });
+      const deckEqId = vi.fn().mockReturnValue({ eq: deckEqUser });
+      const deckSelect = vi.fn().mockReturnValue({ eq: deckEqId });
+
       vi.mocked(supabase.from).mockImplementation((table: string) => {
         if (table === 'review_logs') {
           return { select, update } as unknown as ReturnType<typeof supabase.from>;
@@ -1069,10 +1081,13 @@ describe('Supabase review persistence and queries', () => {
         if (table === 'card_reviews') {
           return { delete: remove, upsert } as unknown as ReturnType<typeof supabase.from>;
         }
+        if (table === 'decks') {
+          return { select: deckSelect } as unknown as ReturnType<typeof supabase.from>;
+        }
         return {} as unknown as ReturnType<typeof supabase.from>;
       });
 
-      return { update, markUndone, remove, upsert, maybeSingle, order, limit };
+      return { update, markUndone, remove, upsert, maybeSingle, order, limit, deckSelect };
     }
 
     it('deletes the review row when undoing a card’s first rating', async () => {
@@ -1137,6 +1152,30 @@ describe('Supabase review persistence and queries', () => {
 
       expect(mocks.order).toHaveBeenCalledWith('reviewed_at', { ascending: false });
       expect(mocks.limit).toHaveBeenCalledWith(1);
+    });
+
+    it('deletes the stale row instead of restoring it when the card left the deck', async () => {
+      // The card was deleted from the deck after it was rated, so there is
+      // nothing to restore. Restoring anyway would recreate an orphan row.
+      const mocks = mockUndoTables(logRow, []);
+
+      const result = await undoLastReview('user-1', 'deck-1', now);
+
+      expect(result).toEqual({ cardId: 'card-1', review: null, cardMissing: true });
+      expect(mocks.remove).toHaveBeenCalledTimes(1);
+      expect(mocks.upsert).not.toHaveBeenCalled();
+      expect(mocks.update).toHaveBeenCalledWith({ undone_at: now.toISOString() });
+    });
+
+    it('treats a deleted deck the same as a deleted card', async () => {
+      const mocks = mockUndoTables(logRow, null);
+
+      const result = await undoLastReview('user-1', 'deck-1', now);
+
+      expect(result?.cardMissing).toBe(true);
+      expect(result?.review).toBeNull();
+      expect(mocks.upsert).not.toHaveBeenCalled();
+      expect(mocks.remove).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -221,14 +221,15 @@ gate is red on day one and gets ignored.
 
 | ID | Task | Detail |
 |---|---|---|
-| CR-1 | Fix pre-existing type errors | `npx tsc -b` reports 6 errors: `src/components/Home.tsx:180`, `:315` (motion variant shape mismatch), `src/services/spacedRepetitionService.test.ts:137` (TS2589 excessive instantiation), `src/test/setup.ts:6`, `:9` (read-only `import.meta.env` assignment — use `Object.defineProperty` or a cast), `vite.config.ts:7` (`test` key requires importing `defineConfig` from `vitest/config`) |
-| CR-2 | Add `typecheck` script | `"typecheck": "tsc -b"` — done, so `npm run build` can no longer mask type errors |
+| CR-1 | Fix pre-existing type errors | ✅ **Done.** `npx tsc -b` now reports 0 errors. The six were: `Home.tsx:180`, `:315` (motion variant shape mismatch — `Reveal` typed `variants` as `typeof fadeUp`, which excluded the scale-based `scaleIn`; now `Variants`), `spacedRepetitionService.test.ts` (TS2589 from nesting `ReturnType` three levels over `supabase.from`; the mocks come from `vi.fn()` and needed no cast), `test/setup.ts:6`, `:9` (read-only `import.meta.env` — now `vi.stubEnv`), `vite.config.ts:7` (`test` key — now imports `defineConfig` from `vitest/config`) |
+| CR-2 | Add `typecheck` script | ✅ **Done.** `"typecheck": "tsc -b"` — so `npm run build` can no longer mask type errors |
 | CR-3 | Adopt a formatter | Add Prettier with a committed config; run one repo-wide formatting PR **on its own**, so the diff is mechanical and reviewable. Without this, style comments will keep appearing in feature reviews. |
-| CR-4 | Enable CI gate | `.github/workflows/ci.yml` runs lint, typecheck, test, build on every PR |
+| CR-4 | Enable CI gate | ✅ **Done.** `.github/workflows/ci.yml` runs lint, typecheck, test, build on every PR, with `npm ci` against the committed lockfile |
 | CR-5 | Turn on branch protection | See §11 |
 
-**Typecheck is non-blocking in the initial workflow** and flips to blocking in
-the same PR that closes CR-1. Do not leave it non-blocking past this phase.
+**Typecheck is blocking.** It flipped from `continue-on-error` in the same PR
+that closed CR-1, as this section required. Do not reintroduce the escape
+hatch: the six errors it hid were real and had been shipping to production.
 
 ### Phase 1 — Week 1–2: make it real
 - Adopt `.github/pull_request_template.md` for all new PRs.

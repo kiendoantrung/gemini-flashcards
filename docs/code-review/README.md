@@ -43,17 +43,17 @@ This system fixes that with three mechanisms:
 
 ## Current baseline
 
-Measured before the gate was introduced, so progress is visible:
-
 | Check | Status | Note |
 |---|---|---|
-| `npm run lint` | ✅ Passes (0 problems) | Safe to make blocking |
-| `npm test` | ✅ 29/29 passing | Safe to make blocking |
-| `npm run build` | ✅ Passes | Does **not** typecheck |
-| `npm run typecheck` | ❌ 6 errors | Blocking once Phase 0 (CR-1) is complete |
+| `npm run lint` | ✅ Passes (0 problems) | Blocking |
+| `npm run typecheck` | ✅ Passes (0 errors) | Blocking since the baseline was cleared |
+| `npm test` | ✅ 82/82 passing | Blocking |
+| `npm run build` | ✅ Passes | Does **not** typecheck — that is why the step above exists |
 
-The build succeeding while `tsc` fails is the clearest symptom of the original
-problem: quality checks exist, but nothing enforces them.
+When the gate was introduced this table read `29/29` tests and 6 type errors,
+and the typecheck step was non-blocking. The build succeeding while `tsc` fails
+is the clearest symptom of the original problem: quality checks existed, but
+nothing enforced them. Both are now fixed and every step blocks.
 
 ---
 
