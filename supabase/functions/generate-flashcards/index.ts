@@ -11,7 +11,12 @@ import {
   MAX_DECK_TITLE_CHARS,
   MAX_REQUEST_BODY_BYTES,
   normalizeDistractors,
+  buildDocumentPrompt,
+  type DocumentSource,
+  type FlashcardData,
   normalizeFlashcards,
+  sourceCardsSchema,
+  summarizeCoverage,
   parseAIResponse,
   parseDailyLimit,
   parseRequestBody,
@@ -158,7 +163,8 @@ async function generateContent(
   schema: Record<string, unknown>,
   inlineData?: { mimeType: string; data: string },
 ): Promise<string> {
-  const contents = inlineData ? [{ text: prompt }, { inlineData }] : prompt;
+  // Gemini's document guidance: put the file before the instructions.
+  const contents = inlineData ? [{ inlineData }, { text: prompt }] : prompt;
 
   // Start at a random key so concurrent requests spread across keys instead
   // of all hammering key 1 first.
@@ -260,42 +266,37 @@ ${JSON.stringify(cardsList, null, 2)}`;
   );
 }
 
-async function handleGenerateFromText(apiKeys: string[], text: string, numQuestions: number) {
-  const prompt = `Create ${numQuestions} flashcard questions and answers from this text.
-
-RULES:
-- Respond in the SAME LANGUAGE as the source text
-- Focus on KEY CONCEPTS and important facts
-- Questions should test understanding, not trivial details
-- Answers should be concise but complete (1-3 sentences)
-- Avoid duplicate or overlapping questions
-- Return a JSON array of objects, each with "front" (question) and "back" (answer) properties
-
-Source text:
-${text}`;
-
-  return normalizeFlashcards(
-    parseAIResponse(await generateContent(apiKeys, prompt, flashcardArraySchema)),
-    numQuestions,
+/**
+ * Cards from a whole document. The prompt makes the model outline the
+ * document and spread the cards over every section (see buildDocumentPrompt);
+ * the coverage counts are logged so that spread can be checked in production.
+ */
+async function generateFromDocument(
+  apiKeys: string[],
+  source: DocumentSource,
+  numQuestions: number,
+  inlineData?: { mimeType: string; data: string },
+): Promise<FlashcardData[]> {
+  const responseText = await generateContent(
+    apiKeys,
+    buildDocumentPrompt(source, numQuestions),
+    sourceCardsSchema,
+    inlineData,
   );
+  const cards = normalizeFlashcards(parseAIResponse(responseText), numQuestions);
+  console.log("Document coverage", { source: source.kind, requested: numQuestions, ...summarizeCoverage(cards) });
+  return cards;
 }
 
-async function handleGenerateFromPDF(apiKeys: string[], pdfBase64: string, numQuestions: number) {
-  const prompt = `Create ${numQuestions} flashcard questions and answers from this PDF document.
+function handleGenerateFromText(apiKeys: string[], text: string, numQuestions: number) {
+  return generateFromDocument(apiKeys, { kind: "text", text }, numQuestions);
+}
 
-RULES:
-- Respond in the SAME LANGUAGE as the source document
-- Focus on KEY CONCEPTS and important facts
-- Questions should test understanding, not trivial details
-- Answers should be concise but complete (1-3 sentences)
-- Avoid duplicate or overlapping questions
-- Return a JSON array of objects, each with "front" (question) and "back" (answer) properties`;
-
-  const responseText = await generateContent(apiKeys, prompt, flashcardArraySchema, {
+function handleGenerateFromPDF(apiKeys: string[], pdfBase64: string, numQuestions: number) {
+  return generateFromDocument(apiKeys, { kind: "pdf" }, numQuestions, {
     mimeType: "application/pdf",
     data: pdfBase64,
   });
-  return normalizeFlashcards(parseAIResponse(responseText), numQuestions);
 }
 
 // ============================================================================
