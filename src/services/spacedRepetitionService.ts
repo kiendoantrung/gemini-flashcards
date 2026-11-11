@@ -291,7 +291,7 @@ export async function reviewCard(
 
   // Read-modify-write: two devices reviewing the same card within one request
   // window can lose an update (last write wins). Acceptable for a single-user
-  // app; moving the schedule into an RPC would make it atomic.
+  // app. The write and its log entry, however, are atomic (see persistReview).
   const existingReview = existingData ? mapRowToCardReview(existingData as CardReviewRow) : null;
   const currentState: ReviewState = existingReview
     ? {
@@ -315,21 +315,105 @@ export async function reviewCard(
   const dueDate =
     interval === nextState.interval ? nextState.dueDate : dueDateFor(now, interval, timeZone);
 
-  const upsertPayload = {
-    user_id: userId,
-    deck_id: deckId,
-    card_id: cardId,
-    status: nextState.status,
-    ease_factor: nextState.easeFactor,
-    interval,
-    repetitions: nextState.repetitions,
-    due_date: dueDate,
-    last_reviewed_at: nextState.lastReviewedAt,
+  const write: ReviewWrite = {
+    userId,
+    deckId,
+    cardId,
+    quality,
+    prev: currentState,
+    prevDueDate: existingReview?.dueDate ?? null,
+    prevLastReviewedAt: existingReview?.lastReviewedAt ?? null,
+    next: {
+      status: nextState.status,
+      easeFactor: nextState.easeFactor,
+      // The fuzzed values, so the log matches the row that was actually written.
+      interval,
+      repetitions: nextState.repetitions,
+    },
+    nextDueDate: dueDate,
+    reviewedAt: nextState.lastReviewedAt,
   };
 
+  return mapRowToCardReview(await persistReview(write));
+}
+
+interface ReviewWrite {
+  userId: string;
+  deckId: string;
+  cardId: string;
+  quality: ReviewQuality;
+  prev: ReviewState;
+  prevDueDate: string | null;
+  prevLastReviewedAt: string | null;
+  next: ReviewState;
+  nextDueDate: string;
+  reviewedAt: string;
+}
+
+/** PostgREST: the function is not in the schema cache, i.e. not deployed. */
+const FUNCTION_NOT_FOUND = 'PGRST202';
+
+/**
+ * Persists a rating and its log entry atomically through the `review_card`
+ * RPC. Falls back to two separate writes while that migration has not been
+ * applied, so the client can ship before the database change.
+ */
+async function persistReview(write: ReviewWrite): Promise<CardReviewRow> {
+  const { data, error } = await supabase.rpc('review_card', {
+    p_deck_id: write.deckId,
+    p_card_id: write.cardId,
+    p_quality: write.quality,
+    p_prev_status: write.prev.status,
+    p_prev_ease_factor: write.prev.easeFactor,
+    p_prev_interval: write.prev.interval,
+    p_prev_repetitions: write.prev.repetitions,
+    p_prev_due_date: write.prevDueDate,
+    p_prev_last_reviewed_at: write.prevLastReviewedAt,
+    p_next_status: write.next.status,
+    p_next_ease_factor: write.next.easeFactor,
+    p_next_interval: write.next.interval,
+    p_next_repetitions: write.next.repetitions,
+    p_next_due_date: write.nextDueDate,
+    p_reviewed_at: write.reviewedAt,
+  });
+
+  if (!error) {
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) {
+      throw new Error('review_card returned no row');
+    }
+    return row as CardReviewRow;
+  }
+
+  if ((error as { code?: string }).code !== FUNCTION_NOT_FOUND) {
+    throw error;
+  }
+
+  return persistReviewNonAtomic(write);
+}
+
+/**
+ * Legacy path: upsert, then log. Not atomic — a failed log write leaves the
+ * rating without an undo entry. Remove once the review_card migration
+ * (20261111121000) is applied everywhere.
+ */
+async function persistReviewNonAtomic(write: ReviewWrite): Promise<CardReviewRow> {
   const { data, error } = await supabase
     .from('card_reviews')
-    .upsert(upsertPayload, { onConflict: 'user_id,deck_id,card_id' })
+    .upsert(
+      {
+        user_id: write.userId,
+        deck_id: write.deckId,
+        card_id: write.cardId,
+        status: write.next.status,
+        ease_factor: write.next.easeFactor,
+        interval: write.next.interval,
+        repetitions: write.next.repetitions,
+        due_date: write.nextDueDate,
+        last_reviewed_at: write.reviewedAt,
+      },
+      { onConflict: 'user_id,deck_id,card_id' },
+    )
     .select(REVIEW_COLUMNS)
     .single();
 
@@ -337,36 +421,30 @@ export async function reviewCard(
     throw error;
   }
 
-  const savedReview = mapRowToCardReview(data as CardReviewRow);
-
-  // The rating is already persisted at this point. A failed log write costs the
-  // user the ability to undo this one rating, which is a far better outcome than
-  // surfacing an error for a review that did save.
   const { error: logError } = await supabase.from('review_logs').insert({
-    user_id: userId,
-    deck_id: deckId,
-    card_id: cardId,
-    quality,
-    prev_status: currentState.status,
-    prev_ease_factor: currentState.easeFactor,
-    prev_interval: currentState.interval,
-    prev_repetitions: currentState.repetitions,
-    prev_due_date: existingReview?.dueDate ?? null,
-    prev_last_reviewed_at: existingReview?.lastReviewedAt ?? null,
-    next_status: nextState.status,
-    next_ease_factor: nextState.easeFactor,
-    // The fuzzed values, so the log matches the row that was actually written.
-    next_interval: interval,
-    next_repetitions: nextState.repetitions,
-    next_due_date: dueDate,
-    reviewed_at: nextState.lastReviewedAt,
+    user_id: write.userId,
+    deck_id: write.deckId,
+    card_id: write.cardId,
+    quality: write.quality,
+    prev_status: write.prev.status,
+    prev_ease_factor: write.prev.easeFactor,
+    prev_interval: write.prev.interval,
+    prev_repetitions: write.prev.repetitions,
+    prev_due_date: write.prevDueDate,
+    prev_last_reviewed_at: write.prevLastReviewedAt,
+    next_status: write.next.status,
+    next_ease_factor: write.next.easeFactor,
+    next_interval: write.next.interval,
+    next_repetitions: write.next.repetitions,
+    next_due_date: write.nextDueDate,
+    reviewed_at: write.reviewedAt,
   });
 
   if (logError) {
     console.error('Review saved but its log was not written; undo unavailable for this rating:', logError);
   }
 
-  return savedReview;
+  return data as CardReviewRow;
 }
 
 export interface UndoResult {

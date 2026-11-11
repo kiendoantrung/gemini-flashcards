@@ -15,9 +15,15 @@ import { pagedQuery } from '../test/pagedQuery';
 
 vi.mock('../lib/supabase', () => {
   const fromMock = vi.fn();
+  // Default: the review_card migration is not applied, so reviewCard takes
+  // the legacy two-request path. RPC-specific tests override this.
+  const rpcMock = vi.fn(() =>
+    Promise.resolve({ data: null, error: { code: 'PGRST202', message: 'function not found' } }),
+  );
   return {
     supabase: {
       from: fromMock,
+      rpc: rpcMock,
     },
   };
 });
@@ -552,7 +558,83 @@ describe('Supabase review persistence and queries', () => {
     });
   });
 
-  it('still saves the review when the log write fails', async () => {
+  describe('atomic review_card RPC', () => {
+    const savedRow = {
+      id: 'rev-1',
+      user_id: 'user-1',
+      deck_id: 'deck-1',
+      card_id: 'card-1',
+      status: 'review',
+      ease_factor: 2.5,
+      interval: 1,
+      repetitions: 1,
+      due_date: '2026-08-30T04:00:00.000Z',
+      last_reviewed_at: '2026-08-29T12:00:00.000Z',
+      created_at: '2026-08-29T12:00:00.000Z',
+    };
+
+    function mockExistingRow(existing: Record<string, unknown> | null) {
+      const upsert = vi.fn();
+      const insert = vi.fn();
+      vi.mocked(supabase.from).mockImplementation((table: string) => {
+        if (table === 'card_reviews') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  eq: () => ({ maybeSingle: () => Promise.resolve({ data: existing, error: null }) }),
+                }),
+              }),
+            }),
+            upsert,
+          } as unknown as ReturnType<typeof supabase.from>;
+        }
+        return { insert } as unknown as ReturnType<typeof supabase.from>;
+      });
+      return { upsert, insert };
+    }
+
+    it('writes the rating and its log through one RPC call', async () => {
+      const { upsert, insert } = mockExistingRow(null);
+      vi.mocked(supabase.rpc).mockResolvedValueOnce({ data: [savedRow], error: null } as never);
+
+      const result = await reviewCard('user-1', 'deck-1', 'card-1', 3, now, 'UTC');
+
+      expect(supabase.rpc).toHaveBeenCalledWith('review_card', {
+        p_deck_id: 'deck-1',
+        p_card_id: 'card-1',
+        p_quality: 3,
+        p_prev_status: 'new',
+        p_prev_ease_factor: 2.5,
+        p_prev_interval: 0,
+        p_prev_repetitions: 0,
+        p_prev_due_date: null,
+        p_prev_last_reviewed_at: null,
+        p_next_status: 'review',
+        p_next_ease_factor: 2.5,
+        p_next_interval: 1,
+        p_next_repetitions: 1,
+        p_next_due_date: '2026-08-30T04:00:00.000Z',
+        p_reviewed_at: '2026-08-29T12:00:00.000Z',
+      });
+      // No separate writes: a failed log can no longer leave undo pointing
+      // at the previous rating.
+      expect(upsert).not.toHaveBeenCalled();
+      expect(insert).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ cardId: 'card-1', interval: 1, repetitions: 1 });
+    });
+
+    it('surfaces an RPC failure instead of falling back to non-atomic writes', async () => {
+      const { upsert } = mockExistingRow(null);
+      const rlsError = { code: '42501', message: 'new row violates row-level security policy' };
+      vi.mocked(supabase.rpc).mockResolvedValueOnce({ data: null, error: rlsError } as never);
+
+      await expect(reviewCard('user-1', 'deck-1', 'card-1', 3, now, 'UTC')).rejects.toBe(rlsError);
+      expect(upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  it('still saves the review when the log write fails (legacy path, before the RPC migration)', async () => {
     const savedRow = {
       id: 'rev-1',
       user_id: 'user-1',
