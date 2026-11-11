@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from './fetchAllRows';
 import type { CardReview, DeckProgress, Flashcard, ReviewStatus } from '../types/flashcard';
 
 export type ReviewQuality = 1 | 2 | 3 | 4;
@@ -70,6 +71,17 @@ interface CardReviewRow {
   due_date: string;
   last_reviewed_at: string | null;
   created_at: string;
+}
+
+/** Every review row of one deck, paged past PostgREST's max-rows limit. */
+function fetchDeckReviewRows(userId: string, deckId: string): Promise<CardReviewRow[]> {
+  return fetchAllRows<CardReviewRow>(() =>
+    supabase
+      .from('card_reviews')
+      .select(REVIEW_COLUMNS)
+      .eq('user_id', userId)
+      .eq('deck_id', deckId),
+  );
 }
 
 function mapRowToCardReview(row: CardReviewRow): CardReview {
@@ -207,17 +219,7 @@ export async function getDueCards(
   now: Date = new Date(),
   timeZone: string = getTimeZone(),
 ): Promise<DueCard[]> {
-  const { data, error } = await supabase
-    .from('card_reviews')
-    .select(REVIEW_COLUMNS)
-    .eq('user_id', userId)
-    .eq('deck_id', deckId);
-
-  if (error) {
-    throw error;
-  }
-
-  const rows = (data ?? []) as CardReviewRow[];
+  const rows = await fetchDeckReviewRows(userId, deckId);
   const reviewsByCardId = new Map<string, CardReview>();
   for (const row of rows) {
     reviewsByCardId.set(row.card_id, mapRowToCardReview(row));
@@ -726,17 +728,7 @@ export async function getDeckProgress(
     return emptyProgress();
   }
 
-  const { data, error } = await supabase
-    .from('card_reviews')
-    .select(REVIEW_COLUMNS)
-    .eq('user_id', userId)
-    .eq('deck_id', deckId);
-
-  if (error) {
-    throw error;
-  }
-
-  const reviews = ((data ?? []) as CardReviewRow[]).map(mapRowToCardReview);
+  const reviews = (await fetchDeckReviewRows(userId, deckId)).map(mapRowToCardReview);
   return countProgress(reviews, cards, now, timeZone);
 }
 
@@ -755,17 +747,17 @@ export async function getDeckProgressBatch(
     return {};
   }
 
-  const { data, error } = await supabase
-    .from('card_reviews')
-    .select(REVIEW_COLUMNS)
-    .eq('user_id', userId)
-    .in('deck_id', deckIds);
+  // One row per reviewed card across every deck: past 1000 cards a plain
+  // select is silently truncated, so this is paged.
+  const rows = await fetchAllRows<CardReviewRow>(() =>
+    supabase
+      .from('card_reviews')
+      .select(REVIEW_COLUMNS)
+      .eq('user_id', userId)
+      .in('deck_id', deckIds),
+  );
 
-  if (error) {
-    throw error;
-  }
-
-  const byDeck = groupReviewsByDeck((data ?? []) as CardReviewRow[]);
+  const byDeck = groupReviewsByDeck(rows);
 
   const progressById: Record<string, DeckProgress> = {};
   for (const deck of decks) {

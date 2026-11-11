@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { getReviewStats } from './reviewStatsService';
 import { supabase } from '../lib/supabase';
+import { pagedQuery } from '../test/pagedQuery';
 
 vi.mock('../lib/supabase', () => {
   const fromMock = vi.fn();
@@ -23,12 +24,13 @@ function due(deckId: string, cardId: string, dueDate: string) {
 }
 
 function mockTables(logs: unknown[], dues: unknown[]) {
-  const logGte = vi.fn().mockResolvedValue({ data: logs, error: null });
+  const logGte = vi.fn().mockReturnValue(pagedQuery({ data: logs, error: null }));
   const logIs = vi.fn().mockReturnValue({ gte: logGte });
   const logEq = vi.fn().mockReturnValue({ is: logIs });
   const logSelect = vi.fn().mockReturnValue({ eq: logEq });
 
-  const dueEq = vi.fn().mockResolvedValue({ data: dues, error: null });
+  const dueLt = vi.fn().mockReturnValue(pagedQuery({ data: dues, error: null }));
+  const dueEq = vi.fn().mockReturnValue({ lt: dueLt });
   const dueSelect = vi.fn().mockReturnValue({ eq: dueEq });
 
   vi.mocked(supabase.from).mockImplementation((table: string) => {
@@ -41,7 +43,7 @@ function mockTables(logs: unknown[], dues: unknown[]) {
     return {} as unknown as ReturnType<typeof supabase.from>;
   });
 
-  return { logGte, logIs, logEq, logSelect, dueEq, dueSelect };
+  return { logGte, logIs, logEq, logSelect, dueEq, dueLt, dueSelect };
 }
 
 describe('review statistics', () => {
@@ -248,11 +250,25 @@ describe('review statistics', () => {
     expect(dueEq).toHaveBeenCalledWith('user_id', 'user-1');
   });
 
+  it('only reads review rows that can fall inside the forecast window', async () => {
+    const { dueLt } = mockTables([], []);
+
+    await getReviewStats('user-1', decks, now, 'UTC');
+
+    // 7 forecast days plus one day of slack for the 04:00 boundary.
+    expect(dueLt).toHaveBeenCalledWith('due_date', '2026-09-06T12:00:00.000Z');
+  });
+
   it('surfaces a query failure instead of showing empty statistics', async () => {
     vi.mocked(supabase.from).mockImplementation(
       () =>
         ({
-          select: () => ({ eq: () => ({ is: () => ({ gte: () => Promise.resolve({ data: null, error: new Error('boom') }) }) }) }),
+          select: () => ({
+            eq: () => ({
+              is: () => ({ gte: () => pagedQuery({ data: null, error: new Error('boom') }) }),
+              lt: () => pagedQuery({ data: [], error: null }),
+            }),
+          }),
         }) as unknown as ReturnType<typeof supabase.from>,
     );
 

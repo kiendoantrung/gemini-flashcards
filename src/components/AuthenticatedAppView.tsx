@@ -151,12 +151,7 @@ export function AuthenticatedAppView({
               deckProgressById={deckProgressById}
               onStartSpacedReview={onStartSpacedReview}
               onSelectDeck={onSelectDeck}
-              onDeleteDeck={(deckId) => {
-                void onDeckDelete(deckId);
-              }}
-              onUpdateDeck={(deckId, updates) => {
-                void onDeckUpdate(deckId, updates);
-              }}
+              onDeleteDeck={onDeckDelete}
               onEditDeck={onEditDeck}
               onCreateDeck={() => setIsCreateDeckModalOpen(true)}
             />

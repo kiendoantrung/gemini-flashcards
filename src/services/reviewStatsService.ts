@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from './fetchAllRows';
 import type { DailyReviewCount, Deck, DeckRetention, Flashcard, ReviewStats } from '../types/flashcard';
 import { addDaysToDayKey, getTimeZone, studyDayKey } from './spacedRepetitionService';
 
@@ -86,9 +87,11 @@ export type StatsDeck = Pick<Deck, 'id' | 'title'> & { cards: Pick<Flashcard, 'i
 /**
  * Aggregates the rating log into the numbers the statistics page shows.
  *
- * Aggregation happens in JavaScript over a bounded window rather than in SQL.
- * A heavy user produces a few thousand rows in 30 days, which is a small
- * response; if that ever stops being true, move this into an RPC.
+ * Aggregation happens in JavaScript over a bounded window rather than in SQL,
+ * because the study-day boundary (04:00 local, DST-aware) lives here and is
+ * tested here. A heavy user produces a few thousand rows in 30 days, which is
+ * more than one PostgREST page, so the reads are paged (see fetchAllRows). If
+ * the payload itself becomes the bottleneck, move this into an RPC.
  */
 export async function getReviewStats(
   userId: string,
@@ -105,29 +108,37 @@ export async function getReviewStats(
   // window are dropped below.
   const since = new Date(now.getTime() - (windowDays + 1) * MS_PER_DAY).toISOString();
 
-  const [logResult, dueResult] = await Promise.all([
-    supabase
-      .from('review_logs')
-      .select('deck_id, quality, reviewed_at')
-      .eq('user_id', userId)
-      .is('undone_at', null)
-      .gte('reviewed_at', since),
-    supabase.from('card_reviews').select('deck_id, card_id, due_date').eq('user_id', userId),
-  ]);
+  // Only rows that can land in the forecast are needed: anything due later
+  // than the window is skipped below anyway. Over-fetch by a day for the same
+  // 04:00 boundary reason as `since`.
+  const forecastUntil = new Date(now.getTime() + (FORECAST_DAYS + 1) * MS_PER_DAY).toISOString();
 
-  if (logResult.error) {
-    throw logResult.error;
-  }
-  if (dueResult.error) {
-    throw dueResult.error;
-  }
+  // Both result sets grow with the user's history, so they are paged: a plain
+  // select is silently cut off at PostgREST's max-rows limit.
+  const [logRows, dueRows] = await Promise.all([
+    fetchAllRows<ReviewLogRow>(() =>
+      supabase
+        .from('review_logs')
+        .select('id, deck_id, quality, reviewed_at')
+        .eq('user_id', userId)
+        .is('undone_at', null)
+        .gte('reviewed_at', since),
+    ),
+    fetchAllRows<DueRow>(() =>
+      supabase
+        .from('card_reviews')
+        .select('id, deck_id, card_id, due_date')
+        .eq('user_id', userId)
+        .lt('due_date', forecastUntil),
+    ),
+  ]);
 
   const stats = emptyStats(windowDays, todayKey);
   const dailyByKey = new Map(stats.daily.map((bucket) => [bucket.dayKey, bucket]));
 
   const totalsByDeck = new Map<string, { total: number; passed: number }>();
 
-  for (const row of (logResult.data ?? []) as ReviewLogRow[]) {
+  for (const row of logRows) {
     const dayKey = studyDayKey(new Date(row.reviewed_at), timeZone);
     const bucket = dailyByKey.get(dayKey);
     if (!bucket) {
@@ -176,7 +187,7 @@ export async function getReviewStats(
   );
   const forecastByKey = new Map(stats.forecast.map((day) => [day.dayKey, day]));
 
-  for (const row of (dueResult.data ?? []) as DueRow[]) {
+  for (const row of dueRows) {
     if (!liveCardKeys.has(`${row.deck_id}:${row.card_id}`)) {
       continue;
     }

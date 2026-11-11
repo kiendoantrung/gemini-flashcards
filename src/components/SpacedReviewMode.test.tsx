@@ -76,7 +76,6 @@ describe('DeckList spaced review actions and progress counters', () => {
         onStartSpacedReview={onStartSpacedReview}
         onSelectDeck={onSelectDeck}
         onDeleteDeck={vi.fn()}
-        onUpdateDeck={vi.fn()}
         onEditDeck={vi.fn()}
         onCreateDeck={vi.fn()}
       />

@@ -11,6 +11,7 @@ import {
   type ReviewState,
 } from './spacedRepetitionService';
 import { supabase } from '../lib/supabase';
+import { pagedQuery } from '../test/pagedQuery';
 
 vi.mock('../lib/supabase', () => {
   const fromMock = vi.fn();
@@ -230,7 +231,7 @@ describe('Supabase review persistence and queries', () => {
   it('returns an empty queue for an empty deck', async () => {
     const mockSelect = vi.fn().mockReturnThis();
     const mockEqUser = vi.fn().mockReturnThis();
-    const mockEqDeck = vi.fn().mockResolvedValue({ data: [], error: null });
+    const mockEqDeck = vi.fn().mockReturnValue(pagedQuery({ data: [], error: null }));
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof supabase.from>);
     mockSelect.mockReturnValue({ eq: mockEqUser });
     mockEqUser.mockReturnValue({ eq: mockEqDeck });
@@ -241,7 +242,7 @@ describe('Supabase review persistence and queries', () => {
   it('excludes reviews whose cards no longer belong to the deck', async () => {
     const mockSelect = vi.fn().mockReturnThis();
     const mockEqUser = vi.fn().mockReturnThis();
-    const mockEqDeck = vi.fn().mockResolvedValue({
+    const mockEqDeck = vi.fn().mockReturnValue(pagedQuery({
       data: [{
         id: 'orphan-review', user_id: 'user-1', deck_id: 'deck-1', card_id: 'deleted-card',
         status: 'review', ease_factor: 2.5, interval: 1, repetitions: 1,
@@ -249,7 +250,7 @@ describe('Supabase review persistence and queries', () => {
         created_at: '2026-08-28T10:00:00.000Z',
       }],
       error: null,
-    });
+    }));
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof supabase.from>);
     mockSelect.mockReturnValue({ eq: mockEqUser });
     mockEqUser.mockReturnValue({ eq: mockEqDeck });
@@ -269,7 +270,7 @@ describe('Supabase review persistence and queries', () => {
     const now = new Date('2026-08-29T12:00:00.000Z');
     const mockSelect = vi.fn().mockReturnThis();
     const mockEqUser = vi.fn().mockReturnThis();
-    const mockEqDeck = vi.fn().mockResolvedValue({
+    const mockEqDeck = vi.fn().mockReturnValue(pagedQuery({
       data: [{
         id: 'boundary-review', user_id: 'user-1', deck_id: 'deck-1', card_id: 'card-1',
         status: 'review', ease_factor: 2.5, interval: 1, repetitions: 1,
@@ -277,7 +278,7 @@ describe('Supabase review persistence and queries', () => {
         created_at: '2026-08-28T12:00:00.000Z',
       }],
       error: null,
-    });
+    }));
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof supabase.from>);
     mockSelect.mockReturnValue({ eq: mockEqUser });
     mockEqUser.mockReturnValue({ eq: mockEqDeck });
@@ -312,7 +313,7 @@ describe('Supabase review persistence and queries', () => {
     const mockRows = (rows: unknown[]) => {
       const mockSelect = vi.fn().mockReturnThis();
       const mockEqUser = vi.fn().mockReturnThis();
-      const mockEqDeck = vi.fn().mockResolvedValue({ data: rows, error: null });
+      const mockEqDeck = vi.fn().mockReturnValue(pagedQuery({ data: rows, error: null }));
       vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof supabase.from>);
       mockSelect.mockReturnValue({ eq: mockEqUser });
       mockEqUser.mockReturnValue({ eq: mockEqDeck });
@@ -374,7 +375,7 @@ describe('Supabase review persistence and queries', () => {
   it('fetches and orders due cards with relearning first, due reviews next, and up to 20 new cards', async () => {
     const mockSelect = vi.fn().mockReturnThis();
     const mockEqUser = vi.fn().mockReturnThis();
-    const mockEqDeck = vi.fn().mockResolvedValue({
+    const mockEqDeck = vi.fn().mockReturnValue(pagedQuery({
       data: [
         {
           id: 'rev-relearn',
@@ -417,7 +418,7 @@ describe('Supabase review persistence and queries', () => {
         },
       ],
       error: null,
-    });
+    }));
 
     vi.mocked(supabase.from).mockReturnValue({
       select: mockSelect,
@@ -695,7 +696,7 @@ describe('Supabase review persistence and queries', () => {
   it('calculates deck progress buckets correctly', async () => {
     const mockSelect = vi.fn().mockReturnThis();
     const mockEqUser = vi.fn().mockReturnThis();
-    const mockEqDeck = vi.fn().mockResolvedValue({
+    const mockEqDeck = vi.fn().mockReturnValue(pagedQuery({
       data: [
         // due review (due <= now)
         {
@@ -755,7 +756,7 @@ describe('Supabase review persistence and queries', () => {
         },
       ],
       error: null,
-    });
+    }));
 
     vi.mocked(supabase.from).mockReturnValue({
       select: mockSelect,
@@ -787,7 +788,7 @@ describe('Supabase review persistence and queries', () => {
   it('ignores reviews whose card was removed from the deck', async () => {
     const mockSelect = vi.fn().mockReturnThis();
     const mockEqUser = vi.fn().mockReturnThis();
-    const mockEqDeck = vi.fn().mockResolvedValue({
+    const mockEqDeck = vi.fn().mockReturnValue(pagedQuery({
       data: [
         {
           id: 'rev-live',
@@ -817,7 +818,7 @@ describe('Supabase review persistence and queries', () => {
         },
       ],
       error: null,
-    });
+    }));
 
     vi.mocked(supabase.from).mockReturnValue({
       select: mockSelect,
@@ -845,7 +846,7 @@ describe('Supabase review persistence and queries', () => {
   function mockOneReviewedCard(reviewedAt: string) {
     const mockSelect = vi.fn().mockReturnThis();
     const mockEqUser = vi.fn().mockReturnThis();
-    const mockEqDeck = vi.fn().mockResolvedValue({
+    const mockEqDeck = vi.fn().mockReturnValue(pagedQuery({
       data: [
         {
           id: 'rev-1',
@@ -862,7 +863,7 @@ describe('Supabase review persistence and queries', () => {
         },
       ],
       error: null,
-    });
+    }));
 
     vi.mocked(supabase.from).mockReturnValue({
       select: mockSelect,
@@ -917,7 +918,7 @@ describe('Supabase review persistence and queries', () => {
 
     const mockSelect = vi.fn().mockReturnThis();
     const mockEqUser = vi.fn().mockReturnThis();
-    const mockEqDeck = vi.fn().mockResolvedValue({
+    const mockEqDeck = vi.fn().mockReturnValue(pagedQuery({
       data: [
         {
           id: 'rev-dst',
@@ -934,7 +935,7 @@ describe('Supabase review persistence and queries', () => {
         },
       ],
       error: null,
-    });
+    }));
 
     vi.mocked(supabase.from).mockReturnValue({
       select: mockSelect,
@@ -954,7 +955,7 @@ describe('Supabase review persistence and queries', () => {
   it('loads progress for every deck in a single query', async () => {
     const mockSelect = vi.fn().mockReturnThis();
     const mockEqUser = vi.fn().mockReturnThis();
-    const mockIn = vi.fn().mockResolvedValue({
+    const mockIn = vi.fn().mockReturnValue(pagedQuery({
       data: [
         {
           id: 'rev-a',
@@ -984,7 +985,7 @@ describe('Supabase review persistence and queries', () => {
         },
       ],
       error: null,
-    });
+    }));
 
     vi.mocked(supabase.from).mockReturnValue({
       select: mockSelect,
