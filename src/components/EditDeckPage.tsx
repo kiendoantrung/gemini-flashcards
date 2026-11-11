@@ -1,16 +1,26 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { ArrowLeft, Trash2, Plus, Save, Search, ChevronLeft, ChevronRight, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Trash2, Plus, Save, Search, ChevronLeft, ChevronRight, Copy, Check, Loader2, List, X } from 'lucide-react';
 import type { Deck, Flashcard } from '../types/flashcard';
+import { MAX_CARD_TEXT_CHARS } from '../config/limits';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface EditDeckPageProps {
   deck: Deck;
-  onSave: (updates: Partial<Deck>) => void;
+  /** Resolves when the deck is saved; rejects (after reporting) when it is not. */
+  onSave: (updates: Partial<Deck>) => Promise<void>;
   onCancel: () => void;
 }
 
 const FRONT_MAX = 2000;
-const BACK_MAX = 4000;
+const BACK_MAX = MAX_CARD_TEXT_CHARS;
 const DESC_MAX = 160;
+
+function cardsEqual(a: Flashcard[], b: Flashcard[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((card, index) => card.id === b[index].id && card.front === b[index].front && card.back === b[index].back)
+  );
+}
 
 export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
   const [title, setTitle] = useState(deck.title);
@@ -19,8 +29,37 @@ export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  /** Mobile only: the deck details + card list panel is a full-screen sheet. */
+  const [showMobilePanel, setShowMobilePanel] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const isMounted = useRef(true);
+  useEffect(() => () => {
+    isMounted.current = false;
+  }, []);
+
+  const isDirty =
+    title !== deck.title || description !== deck.description || !cardsEqual(cards, deck.cards);
+
+  // Closing the tab or reloading with unsaved edits loses them silently.
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  const requestCancel = () => {
+    if (isDirty) {
+      setShowDiscardDialog(true);
+    } else {
+      onCancel();
+    }
+  };
 
   const activeCard = cards[activeIndex] || null;
 
@@ -57,7 +96,8 @@ export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
     return () => window.removeEventListener('keydown', handler);
   }, [goNext]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (saveStatus === 'saving') return;
     if (!title.trim() || !description.trim()) {
       setError('Title and description are required');
       return;
@@ -71,9 +111,21 @@ export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
       return;
     }
     setError(null);
-    onSave({ title, description, cards });
-    setSaveStatus('saved');
-    setTimeout(() => setSaveStatus('idle'), 2500);
+    setSaveStatus('saving');
+    try {
+      await onSave({ title: title.trim(), description: description.trim(), cards });
+      // A successful save usually closes the editor; only update state if
+      // it is still on screen.
+      if (!isMounted.current) return;
+      setSaveStatus('saved');
+      setTimeout(() => {
+        if (isMounted.current) setSaveStatus('idle');
+      }, 2500);
+    } catch {
+      if (!isMounted.current) return;
+      setSaveStatus('idle');
+      setError('Could not save your changes. Please try again.');
+    }
   };
 
   const handleCardChange = useCallback((field: 'front' | 'back', value: string) => {
@@ -120,7 +172,9 @@ export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
           {/* Left: back + title */}
           <div className="flex items-center gap-3 min-w-0">
             <button
-              onClick={onCancel}
+              type="button"
+              onClick={requestCancel}
+              aria-label="Back to decks"
               className="text-duo-pencil hover:text-duo-charcoal transition-colors flex items-center gap-1.5 flex-shrink-0"
             >
               <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
@@ -143,20 +197,33 @@ export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
 
           {/* Right: save status + actions */}
           <div className="flex items-center gap-3 flex-shrink-0">
-            {saveStatus === 'saved' && (
-              <span className="text-duo-green font-bold text-xs flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> Saved
+            <span role="status" aria-live="polite" className="text-xs font-bold">
+              {saveStatus === 'saved' && (
+                <span className="text-duo-green flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" /> Saved
+                </span>
+              )}
+              {saveStatus === 'idle' && isDirty && (
+                <span className="text-duo-pencil hidden sm:inline">Unsaved changes</span>
+              )}
+            </span>
+            {error && (
+              <span role="alert" className="text-duo-red font-bold text-xs max-w-[40vw] truncate" title={error}>
+                {error}
               </span>
             )}
-            {error && (
-              <span className="text-duo-red font-bold text-xs hidden sm:inline">{error}</span>
-            )}
             <button
-              onClick={handleSave}
-              className="btn-duo-green duo-label px-5 py-2 text-xs tracking-wider shadow-duo-green flex items-center gap-1.5"
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={saveStatus === 'saving'}
+              className="btn-duo-green duo-label px-5 py-2 text-xs tracking-wider shadow-duo-green flex items-center gap-1.5 disabled:opacity-60"
             >
-              <Save className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span className="hidden sm:inline">Save</span>
+              {saveStatus === 'saving' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5 stroke-[2.5]" />
+              )}
+              <span className="hidden sm:inline">{saveStatus === 'saving' ? 'Saving…' : 'Save'}</span>
             </button>
             <button
               onClick={addCard}
@@ -176,10 +243,24 @@ export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
         {/* ---------------------------------------------------------- */}
         {/*  LEFT SIDEBAR (Cards list scrolls internally)               */}
         {/* ---------------------------------------------------------- */}
-        <aside className="w-80 flex-shrink-0 border-r-2 border-duo-border bg-white hidden lg:flex flex-col h-full min-h-0 overflow-hidden">
+        <aside
+          className={`${
+            showMobilePanel ? 'flex fixed inset-0 z-30 w-full' : 'hidden'
+          } lg:static lg:z-auto lg:w-80 lg:flex flex-shrink-0 border-r-2 border-duo-border bg-white flex-col h-full min-h-0 overflow-hidden`}
+        >
           {/* Deck Details */}
           <div className="p-5 border-b-2 border-duo-border space-y-4 flex-shrink-0">
-            <h3 className="text-sm font-heading font-extrabold text-duo-charcoal">Deck details</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-heading font-extrabold text-duo-charcoal">Deck details</h3>
+              <button
+                type="button"
+                onClick={() => setShowMobilePanel(false)}
+                className="lg:hidden p-1.5 rounded-lg border-2 border-duo-border text-duo-pencil"
+                aria-label="Close deck details"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             <div>
               <label className="block text-xs font-bold text-duo-pencil uppercase tracking-wider mb-1.5">Title</label>
               <input
@@ -225,7 +306,10 @@ export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
               <button
                 key={card.id}
                 data-card-index={originalIndex}
-                onClick={() => setActiveIndex(originalIndex)}
+                onClick={() => {
+                  setActiveIndex(originalIndex);
+                  setShowMobilePanel(false);
+                }}
                 className={`w-full text-left px-3 py-2.5 rounded-xl mb-1 flex items-start gap-3 transition-all group ${
                   originalIndex === activeIndex
                     ? 'bg-duo-gold-subtle border-l-4 border-duo-gold'
@@ -261,7 +345,7 @@ export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
         {/* ---------------------------------------------------------- */}
         {/*  MAIN EDITOR PANEL                                          */}
         {/* ---------------------------------------------------------- */}
-        <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden pb-[68px] lg:pb-0">
           {activeCard ? (
             <>
               {/* Card header */}
@@ -411,13 +495,38 @@ export function EditDeckPage({ deck, onSave, onCancel }: EditDeckPageProps) {
             placeholder="Deck title..."
           />
           <button
-            onClick={handleSave}
-            className="btn-duo-green px-4 py-2 text-xs font-bold shadow-duo-green flex-shrink-0"
+            type="button"
+            onClick={() => setShowMobilePanel(true)}
+            className="btn-duo-white px-3 py-2 text-xs font-bold flex-shrink-0 flex items-center gap-1.5"
+            aria-label="Deck details and card list"
           >
-            <Save className="w-4 h-4" />
+            <List className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={saveStatus === 'saving'}
+            aria-label="Save deck"
+            className="btn-duo-green px-4 py-2 text-xs font-bold shadow-duo-green flex-shrink-0 disabled:opacity-60"
+          >
+            {saveStatus === 'saving' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showDiscardDialog}
+        title="Discard unsaved changes?"
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        onConfirm={() => {
+          setShowDiscardDialog(false);
+          onCancel();
+        }}
+        onCancel={() => setShowDiscardDialog(false)}
+      >
+        <p>Your edits to this deck have not been saved and will be lost.</p>
+      </ConfirmDialog>
     </div>
   );
 }

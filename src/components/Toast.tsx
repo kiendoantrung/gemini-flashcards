@@ -49,6 +49,8 @@ const ToastItem = ({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
 
   return (
     <div
+      role={toast.type === 'error' ? 'alert' : 'status'}
+      aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
       className={`
         flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 shadow-duo-modal
         ${bgColors[toast.type]}
@@ -61,7 +63,9 @@ const ToastItem = ({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
         {toast.message}
       </p>
       <button
+        type="button"
         onClick={handleClose}
+        aria-label="Dismiss notification"
         className="p-1 hover:bg-duo-charcoal/10 rounded-full transition-colors"
       >
         <X className="w-4 h-4 text-duo-pencil" />

@@ -13,3 +13,9 @@ if (!import.meta.env.VITE_SUPABASE_ANON_KEY) {
 }
 
 afterEach(() => cleanup());
+
+// jsdom does not implement layout APIs; components call this to keep the
+// active item visible.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}

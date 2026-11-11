@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, RotateCcw, Sparkles, Undo2 } from 'lucide-react';
 import type { Deck } from '../types/flashcard';
 import { FlashCard } from './FlashCard';
@@ -187,6 +187,37 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
       setIsSubmitting(false);
     }
   };
+
+  // Keyboard shortcuts, the SRS convention: Space flips, 1-4 rate once the
+  // answer is showing. Read through a ref so the listener is attached once
+  // but always sees the current card and handler.
+  const shortcutHandler = useRef<(event: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    shortcutHandler.current = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (isLoading || isSubmitting || currentIndex >= queue.length) return;
+
+      if (event.key === ' ') {
+        // A focused button already activates on Space; don't flip twice.
+        if (target?.closest('button, [role="button"]')) return;
+        event.preventDefault();
+        setIsFlipped((prev) => !prev);
+        return;
+      }
+
+      if (isFlipped && ['1', '2', '3', '4'].includes(event.key)) {
+        event.preventDefault();
+        void handleRate(Number(event.key) as ReviewQuality);
+      }
+    };
+  });
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => shortcutHandler.current(event);
+    window.addEventListener('keydown', listener);
+    return () => window.removeEventListener('keydown', listener);
+  }, []);
 
   const handleUndo = async () => {
     if (isSubmitting || ratedActions.length === 0) return;
@@ -479,7 +510,7 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
         {!isFlipped ? (
           <div className="text-center p-4 bg-white/60 border-2 border-dashed border-duo-border rounded-2xl w-full">
             <p className="text-duo-pencil text-sm font-bold flex items-center justify-center gap-1.5">
-              <RotateCcw className="w-4 h-4" /> Click card above to reveal answer and recall rating options
+              <RotateCcw className="w-4 h-4" /> Click the card or press Space to reveal the answer
             </p>
           </div>
         ) : (
@@ -493,6 +524,8 @@ export function SpacedReviewMode({ deck, userId, onExit }: SpacedReviewModeProps
                   key={quality}
                   disabled={isSubmitting}
                   onClick={() => void handleRate(quality)}
+                  aria-keyshortcuts={String(quality)}
+                  title={`Shortcut: ${quality}`}
                   className={`px-4 py-3 rounded-2xl font-black text-sm flex flex-col items-center justify-center gap-1 transition-all disabled:opacity-50 active:scale-95 shadow-duo-card hover:shadow-duo-card-hover ${btnStyle}`}
                 >
                   <span className="text-base">{label}</span>

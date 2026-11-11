@@ -90,12 +90,10 @@ export function AuthenticatedAppView({
             <EditDeckPage
               deck={editingDeck}
               onSave={async (updates) => {
-                try {
-                  await onDeckUpdate(editingDeck.id, updates);
-                  onStopEditing();
-                } catch {
-                  // Keep editor open so user can retry after save failure.
-                }
+                // Rejects on failure (onDeckUpdate already showed a toast), which
+                // keeps the editor open with an inline error so the user can retry.
+                await onDeckUpdate(editingDeck.id, updates);
+                onStopEditing();
               }}
               onCancel={onStopEditing}
             />

@@ -175,6 +175,39 @@ describe('SpacedReviewMode session flow', () => {
     expect(screen.getByRole('progressbar', { name: /review progress/i })).toHaveAttribute('aria-valuenow', '100');
   });
 
+  it('supports Space to flip and number keys to rate', async () => {
+    vi.mocked(spacedService.getDueCards).mockResolvedValue([
+      { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
+    ]);
+    vi.mocked(spacedService.reviewCard).mockResolvedValue({
+      id: 'rev-1',
+      userId: 'user-1',
+      deckId: 'deck-1',
+      cardId: 'c-1',
+      status: 'review',
+      easeFactor: 2.5,
+      interval: 4,
+      repetitions: 1,
+      dueDate: '2026-09-02T12:00:00.000Z',
+      lastReviewedAt: '2026-08-29T12:00:00.000Z',
+      createdAt: '2026-08-29T12:00:00.000Z',
+    });
+    const user = userEvent.setup();
+
+    render(<SpacedReviewMode deck={dummyDeck} userId="user-1" onExit={vi.fn()} />);
+    expect(await screen.findByText('Hola')).toBeInTheDocument();
+
+    // Rating keys do nothing before the answer is shown.
+    await user.keyboard('4');
+    expect(spacedService.reviewCard).not.toHaveBeenCalled();
+
+    await user.keyboard(' ');
+    expect(await screen.findByRole('button', { name: /easy/i })).toBeInTheDocument();
+
+    await user.keyboard('4');
+    expect(spacedService.reviewCard).toHaveBeenCalledWith('user-1', 'deck-1', 'c-1', 4);
+  });
+
   it('reveals the rating bar when the card is flipped with the keyboard', async () => {
     vi.mocked(spacedService.getDueCards).mockResolvedValue([
       { card: { id: 'c-1', front: 'Hola', back: 'Hello' }, review: null },
