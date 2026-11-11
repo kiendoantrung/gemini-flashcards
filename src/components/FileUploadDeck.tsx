@@ -1,24 +1,57 @@
-import React, { useState } from 'react';
-import { extractTextFromFile, generateQAFromText, generateQAFromPDF } from '../services/fileService';
+import React, { useEffect, useState } from 'react';
+import {
+  detectSourceFileKind,
+  extractTextFromFile,
+  generateQAFromPDF,
+  generateQAFromText,
+  parseQAFile,
+  titleFromFileName,
+  type QAPair,
+} from '../services/fileService';
+import { MAX_CARDS_PER_GENERATION, MAX_PDF_SIZE_LABEL } from '../config/limits';
 import type { Deck } from '../types/flashcard';
 import { FileText, Upload, FileSpreadsheet, Loader2, AlertCircle } from 'lucide-react';
 
 interface FileUploadDeckProps {
   onDeckCreated: (deck: Deck) => Promise<void>;
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
+function clampCardCount(value: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, Math.min(MAX_CARDS_PER_GENERATION, parsed));
+}
+
+export function FileUploadDeck({ onDeckCreated, onBusyChange }: FileUploadDeckProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [numQuestions, setNumQuestions] = useState(10);
   const [textFileName, setTextFileName] = useState<string | null>(null);
   const [qaFileName, setQaFileName] = useState<string | null>(null);
 
+  // Lets the surrounding modal refuse to close mid-request.
+  useEffect(() => {
+    if (!isLoading || !onBusyChange) return;
+    onBusyChange(true);
+    return () => onBusyChange(false);
+  }, [isLoading, onBusyChange]);
+
+  const buildDeck = (file: File, pairs: QAPair[], description: string): Deck => ({
+    id: crypto.randomUUID(),
+    title: titleFromFileName(file.name),
+    description,
+    cards: pairs.map((pair) => ({ id: crypto.randomUUID(), front: pair.front, back: pair.back })),
+  });
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'text' | 'qa') => {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
+    // Reset so choosing the same file again (e.g. after fixing it) still
+    // fires onChange.
+    input.value = '';
     if (!file) return;
 
-    // Update file name display
     if (type === 'text') {
       setTextFileName(file.name);
     } else {
@@ -29,55 +62,22 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
     setError(null);
 
     try {
+      let deck: Deck;
       if (type === 'text') {
-        let cards;
-        
-        // Use Gemini's native PDF support for PDF files
-        if (file.type === 'application/pdf') {
-          cards = await generateQAFromPDF(file, numQuestions);
-        } else {
-          const text = await extractTextFromFile(file);
-          cards = await generateQAFromText(text, numQuestions);
-        }
-        
-        const deck: Deck = {
-          id: crypto.randomUUID(),
-          title: file.name.split('.')[0],
-          description: `AI-generated from ${file.name}`,
-          cards: cards.map(card => ({ ...card, id: crypto.randomUUID() }))
-        };
-        
+        // Gemini reads PDFs natively; other documents are converted to text first.
+        const pairs =
+          detectSourceFileKind(file) === 'pdf'
+            ? await generateQAFromPDF(file, numQuestions)
+            : await generateQAFromText(await extractTextFromFile(file), numQuestions);
+        deck = buildDeck(file, pairs, `AI-generated from ${file.name}`);
         if (deck.cards.length === 0) {
           throw new Error('No flashcards were generated from the file');
         }
-        
-        await onDeckCreated(deck);
       } else {
-        // Parse the Q&A formatted text into cards
-        const text = await extractTextFromFile(file);
-        const cards = text.split('\n\n')
-          .map(pair => {
-            const match = pair.match(/^Q:\s*([\s\S]*?)\nA:\s*([\s\S]*)$/);
-            return {
-              id: crypto.randomUUID(),
-              front: match?.[1]?.trim() || '',
-              back: match?.[2]?.trim() || ''
-            };
-          })
-          .filter(card => card.front && card.back); // Filter out empty cards
-
-        if (cards.length === 0) {
-          throw new Error('No valid question-answer pairs found in the file');
-        }
-
-        const deck: Deck = {
-          id: crypto.randomUUID(),
-          title: file.name.split('.')[0],
-          description: `Imported from ${file.name}`,
-          cards
-        };
-        await onDeckCreated(deck);
+        deck = buildDeck(file, await parseQAFile(file), `Imported from ${file.name}`);
       }
+
+      await onDeckCreated(deck);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to process file');
     } finally {
@@ -102,9 +102,11 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
               <input
                 type="number"
                 min="1"
-                max="50"
+                max={MAX_CARDS_PER_GENERATION}
+                step="1"
                 value={numQuestions}
-                onChange={(e) => setNumQuestions(Number(e.target.value))}
+                onChange={(e) => setNumQuestions(clampCardCount(e.target.value))}
+                disabled={isLoading}
                 className="w-20 px-2 py-1.5 border-2 border-duo-border rounded-xl bg-white text-duo-charcoal text-center text-sm font-black focus:ring-2 focus:ring-duo-green/20 focus:border-duo-green"
               />
             </label>
@@ -119,7 +121,7 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
               Choose File
               <input
                 type="file"
-                accept=".txt,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                accept=".txt,.md,.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 onChange={(e) => handleFileUpload(e, 'text')}
                 className="sr-only"
                 disabled={isLoading}
@@ -131,7 +133,7 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
           </div>
           <p className="mt-2.5 text-xs text-duo-pencil flex items-center font-medium">
             <Upload className="w-3.5 h-3.5 mr-1 text-duo-green" />
-            Supports PDF, DOC, DOCX, or TXT
+            Supports PDF (up to {MAX_PDF_SIZE_LABEL}), DOC, DOCX, or TXT
           </p>
         </div>
 
@@ -153,7 +155,7 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
               Choose Spreadsheet
               <input
                 type="file"
-                accept=".csv,.xlsx,.xls,.json"
+                accept=".csv,.xlsx,.xls,.json,text/csv,application/json"
                 onChange={(e) => handleFileUpload(e, 'qa')}
                 className="sr-only"
                 disabled={isLoading}
@@ -165,13 +167,13 @@ export function FileUploadDeck({ onDeckCreated }: FileUploadDeckProps) {
           </div>
           <p className="mt-2.5 text-xs text-duo-pencil flex items-center font-medium">
             <Upload className="w-3.5 h-3.5 mr-1 text-duo-blue" />
-            Supports CSV, Excel, or JSON files
+            Two columns (question, answer) in CSV or Excel, or a JSON array of {'{'} question, answer {'}'}
           </p>
         </div>
       </div>
 
       {error && (
-        <div className="p-4 bg-duo-red-subtle/80 rounded-2xl border-2 border-duo-red">
+        <div role="alert" className="p-4 bg-duo-red-subtle/80 rounded-2xl border-2 border-duo-red">
           <p className="text-duo-red text-sm font-bold flex items-center">
             <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
             {error}

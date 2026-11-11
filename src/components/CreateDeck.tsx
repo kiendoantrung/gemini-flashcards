@@ -1,22 +1,30 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useId } from 'react';
 import { Wand2, Loader2 } from 'lucide-react';
 import { generateDeck } from '../services/aiService';
 import type { Deck } from '../types/flashcard';
+import { MAX_CARDS_PER_GENERATION } from '../config/limits';
 import { createDeckFormSchema, validateField, topicSchema } from '../utils/validation';
 
 interface CreateDeckProps {
   onDeckCreated: (deck: Deck) => Promise<void>;
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
+export function CreateDeck({ onDeckCreated, onBusyChange }: CreateDeckProps) {
   const [topic, setTopic] = useState('');
   const [numQuestions, setNumQuestions] = useState(10);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ topic?: string; numQuestions?: string }>({});
-  const [retryCount, setRetryCount] = useState(0);
+  const topicId = useId();
+  const numQuestionsId = useId();
 
-  const MAX_RETRIES = 3;
+  // Lets the surrounding modal refuse to close mid-request.
+  useEffect(() => {
+    if (!isLoading || !onBusyChange) return;
+    onBusyChange(true);
+    return () => onBusyChange(false);
+  }, [isLoading, onBusyChange]);
 
   // Validate topic field on blur
   const handleTopicBlur = useCallback(() => {
@@ -45,28 +53,15 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
     setIsLoading(true);
     setError(null);
     setFieldErrors({});
-    setRetryCount(0);
 
-    const attemptGeneration = async (attempt: number): Promise<Deck> => {
-      try {
-        return await generateDeck(topic, numQuestions);
-      } catch (err) {
-        if (attempt < MAX_RETRIES) {
-          setRetryCount(attempt + 1);
-          return await attemptGeneration(attempt + 1);
-        } else {
-          throw err;
-        }
-      }
-    };
-
+    // No client-side retry loop: the Edge Function already retries Gemini, and
+    // retrying here as well multiplied one click into dozens of AI calls.
     try {
-      const deck = await attemptGeneration(0);
+      const deck = await generateDeck(topic.trim(), numQuestions);
       await onDeckCreated(deck);
       setTopic('');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to generate deck';
-      setError(`${message}. Please try again.`);
+      setError(err instanceof Error && err.message ? err.message : 'Failed to generate deck. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -75,12 +70,12 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div>
-        <label htmlFor="topic" className="block text-xs font-bold text-duo-pencil uppercase tracking-wider mb-2">
+        <label htmlFor={topicId} className="block text-xs font-bold text-duo-pencil uppercase tracking-wider mb-2">
           Topic or Subject
         </label>
         <input
           type="text"
-          id="topic"
+          id={topicId}
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
           onBlur={handleTopicBlur}
@@ -100,36 +95,32 @@ export function CreateDeck({ onDeckCreated }: CreateDeckProps) {
       </div>
 
       <div>
-        <label htmlFor="numQuestions" className="flex items-center justify-between mb-2">
+        <label htmlFor={numQuestionsId} className="flex items-center justify-between mb-2">
           <span className="text-xs font-bold text-duo-pencil uppercase tracking-wider">Number of cards:</span>
           <input
             type="number"
-            id="numQuestions"
+            id={numQuestionsId}
             min="1"
-            max="20"
+            max={MAX_CARDS_PER_GENERATION}
             value={numQuestions}
-            onChange={(e) => setNumQuestions(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+            onChange={(e) =>
+              setNumQuestions(
+                Math.max(1, Math.min(MAX_CARDS_PER_GENERATION, Number.parseInt(e.target.value, 10) || 1))
+              )
+            }
             className="w-20 px-3 py-2 border-2 border-duo-border rounded-xl bg-white focus:ring-2 focus:ring-duo-green/20 focus:border-duo-green text-duo-charcoal text-center font-black text-base"
             disabled={isLoading}
           />
         </label>
         <p className="mt-1 text-xs text-duo-pencil font-medium">
-          Maximum 20 questions per deck
+          Maximum {MAX_CARDS_PER_GENERATION} cards per deck
         </p>
       </div>
 
       {error && (
-        <div className="p-4 bg-duo-red-subtle/80 rounded-2xl border-2 border-duo-red">
+        <div role="alert" className="p-4 bg-duo-red-subtle/80 rounded-2xl border-2 border-duo-red">
           <p className="text-duo-red font-bold text-sm">
             {error}
-          </p>
-        </div>
-      )}
-
-      {isLoading && retryCount > 0 && (
-        <div className="p-4 bg-duo-gold-subtle rounded-2xl border-2 border-duo-gold">
-          <p className="text-duo-charcoal text-sm font-bold">
-            Retry attempt {retryCount} of {MAX_RETRIES}...
           </p>
         </div>
       )}

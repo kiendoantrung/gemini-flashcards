@@ -1,17 +1,12 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { RotateCcw, CheckCircle, XCircle, Trophy, Sparkles } from 'lucide-react';
 import type { Deck, QuizAnswer } from '../types/flashcard';
+import { buildOptions, shuffleArray } from '../utils/quizOptions';
 import { generateBatchDistractors } from '../services/aiService';
+import { cacheDistractors, getCachedDistractors } from '../services/distractorCache';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const shuffleArray = <T,>(array: T[]): T[] => {
-  const result = [...array];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-};
+const ANSWER_FEEDBACK_MS = 1400;
 
 interface QuizModeProps {
   deck: Deck;
@@ -33,69 +28,42 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
   const currentCard = shuffledCards[currentIndex];
   const isLast = currentIndex === shuffledCards.length - 1;
 
-  // Load ALL distractors once on mount and pre-generate all options
+  // Load distractors once per deck: cached ones first, the AI only for cards
+  // that have none (or whose text changed since they were cached).
   useEffect(() => {
     let isCancelled = false;
 
     const loadAllOptions = async () => {
-      if (deck.cards.length === 0) {
-        if (!isCancelled) {
-          setIsLoading(false);
-        }
+      const cards = deck.cards;
+      if (cards.length === 0) {
+        setIsLoading(false);
         return;
       }
 
-      if (!isCancelled) {
-        setIsLoading(true);
-      }
+      setIsLoading(true);
 
-      try {
-        // Single API call to generate distractors for ALL cards
-        const batchResults = await generateBatchDistractors(deck.cards);
+      const cached = getCachedDistractors(deck.id, cards);
+      const missing = cards.filter((card) => !cached[card.id]);
 
-        // Pre-generate and shuffle options for all cards
-        const allOptions: Record<string, string[]> = {};
-
-        for (const card of deck.cards) {
-          const distractors = batchResults[card.id] || [];
-
-          // Fallback if AI didn't return distractors for this card
-          if (distractors.length === 0) {
-            const otherCards = deck.cards.filter(c => c.id !== card.id);
-            const fallbackDistractors = otherCards
-              .sort(() => Math.random() - 0.5)
-              .slice(0, 3)
-              .map(c => c.back);
-            allOptions[card.id] = shuffleArray([...fallbackDistractors, card.back]);
-          } else {
-            allOptions[card.id] = shuffleArray([...distractors, card.back]);
-          }
-        }
-
-        if (!isCancelled) {
-          setQuestionOptions(allOptions);
-        }
-      } catch (error) {
-        console.error('Error loading distractors:', error);
-
-        // Fallback: use other card answers as distractors
-        const allOptions: Record<string, string[]> = {};
-        for (const card of deck.cards) {
-          const otherCards = deck.cards.filter(c => c.id !== card.id);
-          const fallbackDistractors = otherCards
-            .sort(() => Math.random() - 0.5)
-            .slice(0, 3)
-            .map(c => c.back);
-          allOptions[card.id] = shuffleArray([...fallbackDistractors, card.back]);
-        }
-        if (!isCancelled) {
-          setQuestionOptions(allOptions);
-        }
-      } finally {
-        if (!isCancelled) {
-          setIsLoading(false);
+      let fresh: Record<string, string[]> = {};
+      if (missing.length > 0) {
+        try {
+          fresh = await generateBatchDistractors(missing);
+          cacheDistractors(deck.id, cards, fresh);
+        } catch (error) {
+          // Falls back to other cards' answers below.
+          console.error('Error loading distractors:', error);
         }
       }
+
+      if (isCancelled) return;
+
+      const allOptions: Record<string, string[]> = {};
+      for (const card of cards) {
+        allOptions[card.id] = buildOptions(card, cards, cached[card.id] ?? fresh[card.id]);
+      }
+      setQuestionOptions(allOptions);
+      setIsLoading(false);
     };
 
     void loadAllOptions();
@@ -103,7 +71,13 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
     return () => {
       isCancelled = true;
     };
-  }, [deck.cards]);
+  }, [deck.id, deck.cards]);
+
+  // The 1.4 s answer feedback must not fire after the quiz is closed.
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+  }, []);
 
   if (shuffledCards.length === 0) {
     return (
@@ -148,16 +122,15 @@ export function QuizMode({ deck, onExit }: QuizModeProps) {
       },
     ]);
 
-    if (isLast) {
-      setTimeout(() => {
+    feedbackTimer.current = setTimeout(() => {
+      feedbackTimer.current = null;
+      if (isLast) {
         setShowResult(true);
-      }, 1400);
-    } else {
-      setTimeout(() => {
-        setCurrentIndex(prev => prev + 1);
+      } else {
+        setCurrentIndex((prev) => prev + 1);
         setSelectedAnswer(null);
-      }, 1400);
-    }
+      }
+    }, ANSWER_FEEDBACK_MS);
   };
 
   const score = answers.filter(a => a.isCorrect).length;

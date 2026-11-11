@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_CARDS_PER_GENERATION } from '../config/limits';
 
 /**
  * Validation schemas for form inputs using Zod
@@ -47,7 +48,7 @@ export const numQuestionsSchema = z
     .number()
     .int('Must be a whole number')
     .min(1, 'Must have at least 1 question')
-    .max(20, 'Maximum 20 questions per deck');
+    .max(MAX_CARDS_PER_GENERATION, `Maximum ${MAX_CARDS_PER_GENERATION} cards per deck`);
 
 // Login form schema
 export const loginFormSchema = z.object({

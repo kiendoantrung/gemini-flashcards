@@ -1,42 +1,21 @@
-import { supabase } from "../lib/supabase";
 import type { Deck, Flashcard } from "../types/flashcard";
-import { withRetry } from "../utils/retry";
-
-const USE_EDGE_FUNCTION = true;
-
+import { invokeGenerate } from "./generateClient";
 
 export async function generateDeck(
   topic: string,
   numQuestions: number = 10
 ): Promise<Deck> {
-  if (!USE_EDGE_FUNCTION) {
-    throw new Error(
-      "Direct API access is disabled for security. Please enable Edge Functions."
-    );
-  }
-
-  const { data, error } = await withRetry(
-    () =>
-      supabase.functions.invoke("generate-flashcards", {
-        body: {
-          action: "generateDeck",
-          topic,
-          numQuestions,
-        },
-      }),
+  return invokeGenerate<Deck>(
+    { action: "generateDeck", topic, numQuestions },
     "generateDeck"
   );
-
-  if (error) {
-    throw new Error(`Edge function error: ${error.message}`);
-  }
-
-  if (data.error) {
-    throw new Error(data.error);
-  }
-
-  return data as Deck;
 }
+
+/**
+ * Cards per request. Must not exceed MAX_CARD_COUNT in the Edge Function;
+ * kept small so one slow Gemini call does not hold up the whole quiz.
+ */
+const DISTRACTOR_CHUNK_SIZE = 10;
 
 export async function generateBatchDistractors(
   cards: Flashcard[]
@@ -45,55 +24,33 @@ export async function generateBatchDistractors(
     return {};
   }
 
-  if (!USE_EDGE_FUNCTION) {
-    console.error("Direct API access is disabled for security.");
-    return {};
+  const chunks: Flashcard[][] = [];
+  for (let i = 0; i < cards.length; i += DISTRACTOR_CHUNK_SIZE) {
+    chunks.push(cards.slice(i, i + DISTRACTOR_CHUNK_SIZE));
   }
 
-  try {
-    // Process in chunks of 10 to avoid timeout
-    const chunkSize = 10;
-    const chunks: Flashcard[][] = [];
-    for (let i = 0; i < cards.length; i += chunkSize) {
-      chunks.push(cards.slice(i, i + chunkSize));
-    }
-
-    const results = await Promise.all(
-      chunks.map((chunk) =>
-        withRetry(
-          async () => {
-            const { data, error } = await supabase.functions.invoke(
-              "generate-flashcards",
-              {
-                body: {
-                  action: "generateDistractors",
-                  cards: chunk.map((c) => ({
-                    id: c.id,
-                    front: c.front,
-                    back: c.back,
-                  })),
-                },
-              }
-            );
-
-            if (error) {
-              throw new Error(`Edge function error: ${error.message}`);
-            }
-
-            if (data.error) {
-              throw new Error(data.error);
-            }
-
-            return data as Record<string, string[]>;
-          },
-          "generateDistractors"
-        )
+  // Chunks are independent: one failing chunk (e.g. a card the function
+  // rejects) must not throw away the distractors the others produced. Cards
+  // without distractors fall back to other answers from the deck.
+  const results = await Promise.allSettled(
+    chunks.map((chunk) =>
+      invokeGenerate<Record<string, string[]>>(
+        {
+          action: "generateDistractors",
+          cards: chunk.map((c) => ({ id: c.id, front: c.front, back: c.back })),
+        },
+        "generateDistractors"
       )
-    );
+    )
+  );
 
-    return results.reduce((acc, curr) => ({ ...acc, ...curr }), {});
-  } catch (error) {
-    console.error("Error generating batch distractors:", error);
-    return {};
+  const merged: Record<string, string[]> = {};
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      Object.assign(merged, result.value);
+    } else {
+      console.error("Error generating distractors:", result.reason);
+    }
   }
+  return merged;
 }
