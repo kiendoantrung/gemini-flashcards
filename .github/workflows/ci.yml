@@ -3,6 +3,10 @@ name: CI
 # Quality gate for every pull request, plus direct pushes to main.
 # See docs/code-review/process.md §3 for the merge gate this enforces.
 #
+# Production deploys live here too (job `deploy`), gated on every check below,
+# so a push to main that fails tests can no longer reach production. The old
+# standalone deploy.yml ran in parallel with CI and deployed regardless.
+#
 # `pull_request` is intentionally unfiltered: a stacked PR targets another
 # feature branch rather than main, and filtering by base branch left those
 # changes ungated until the parent PR merged.
@@ -12,10 +16,11 @@ on:
   push:
     branches: [main]
 
-# Cancel superseded runs on the same branch to save CI minutes.
+# Cancel superseded runs on the same branch to save CI minutes. Never cancel
+# on main: a cancelled run could interrupt a production deploy halfway.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -58,3 +63,62 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  edge-function:
+    name: Edge Function check, lint, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          # Supabase Edge Runtime is Deno 2.x.
+          deno-version: v2.1.x
+
+      - name: Type-check
+        # Resolves the pinned npm: imports from the Deno cache (the root
+        # package.json would otherwise make Deno expect node_modules), so a
+        # bad version pin or an API change in @google/genai fails here
+        # instead of at deploy time.
+        run: deno check --no-lock --node-modules-dir=none supabase/functions/generate-flashcards/index.ts
+
+      - name: Lint
+        run: deno lint supabase/functions
+
+      - name: Test
+        run: deno test --no-lock --no-prompt --node-modules-dir=none supabase/functions
+
+  deploy:
+    name: Deploy to Vercel (production)
+    needs: [quality, edge-function]
+    # Only real pushes to main deploy; pull requests stop after the checks.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Deploy
+        # Vercel builds the project itself, so no local build step: the
+        # `quality` job above has already proven the build. If the Vercel Git
+        # integration is also enabled for this repo, disable one of the two,
+        # or every merge deploys twice.
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel --prod --token "$VERCEL_TOKEN" --yes

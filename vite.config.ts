@@ -13,9 +13,6 @@ export default defineConfig({
     clearMocks: true,
     include: ['src/**/*.test.{ts,tsx}'],
   },
-  optimizeDeps: {
-    exclude: ['pdf-parse']
-  },
   build: {
     rollupOptions: {
       output: {
