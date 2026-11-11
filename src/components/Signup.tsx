@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { signup } from '../services/authService';
+import { resendSignupEmail, signup } from '../services/authService';
 import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
 import { signupFormSchema, validateField, emailSchema, passwordSchema, nameSchema } from '../utils/validation';
 
@@ -87,7 +87,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
     setFieldErrors({});
 
     try {
-      const { data } = await signup(email, password, name, captchaToken);
+      const { data } = await signup(email, password, name.trim(), captchaToken);
       if (!data.user) {
         const errorMessage = 'Signup failed. Please try again.';
         setError(errorMessage);
@@ -123,22 +123,13 @@ export const Signup: React.FC<SignupProps> = ({ onSignup, onError, onToggleForm 
     setCountdown(54);
 
     try {
-      const { data } = await signup(email, password, name, captchaToken);
-      if (!data.user) {
-        const errorMessage = 'Signup failed. Please try again.';
-        setError(errorMessage);
-        onError(errorMessage);
-        resetCaptcha();
-      } else if (data.session) {
-        onSignup();
-      } else {
-        setSuccessMessage('Verification email sent. Please check your inbox.');
-        resetCaptcha();
-      }
+      await resendSignupEmail(email, captchaToken);
+      setSuccessMessage('Verification email sent. Please check your inbox.');
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Signup failed. Please try again.';
+      const errorMessage = err instanceof Error ? err.message : 'Could not resend the email. Please try again.';
       setError(errorMessage);
       onError(errorMessage);
+    } finally {
       resetCaptcha();
     }
   };

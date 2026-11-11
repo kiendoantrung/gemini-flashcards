@@ -27,11 +27,16 @@ export const loginPasswordSchema = z
     .min(1, 'Password is required');
 
 // Name validation schema
+// \p{L} covers every script's letters (including Vietnamese \u1EC5, \u1ED9, \u1EE9 in
+// U+1E00\u2013U+1EFF, which the old Latin-1/Extended-A range rejected) and \p{M}
+// keeps decomposed (NFD) input valid. Apostrophes, hyphens and periods appear
+// in real names: O'Brien, Jean-Luc, Jr.
 export const nameSchema = z
     .string()
+    .trim()
     .min(2, 'Name must be at least 2 characters')
     .max(50, 'Name must be less than 50 characters')
-    .regex(/^[a-zA-Z\s\u00C0-\u024F]+$/, 'Name can only contain letters and spaces');
+    .regex(/^[\p{L}\p{M}\s'.-]+$/u, 'Name can only contain letters, spaces, hyphens and apostrophes');
 
 // Topic validation schema for deck creation
 export const topicSchema = z

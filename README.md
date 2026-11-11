@@ -258,6 +258,15 @@ The database schema and migrations are tracked in `supabase/migrations/`:
 - [`20261019120000_card_reviews_hardening.sql`](./supabase/migrations/20261019120000_card_reviews_hardening.sql): `updated_at` plus trigger, and stricter write policies. Idempotent.
 - [`20261019130000_review_logs.sql`](./supabase/migrations/20261019130000_review_logs.sql): Append-only rating log backing undo and the statistics page. No `DELETE` policy — undo sets `undone_at`.
 - [`20261020140000_review_logs_retention.sql`](./supabase/migrations/20261020140000_review_logs_retention.sql): Index on `reviewed_at` and `prune_review_logs(keep_days, batch_size)`. Creates no data changes and deletes nothing.
+- [`20261111120000_ai_usage_quota.sql`](./supabase/migrations/20261111120000_ai_usage_quota.sql): `ai_usage_daily` and `consume_ai_quota()` for the per-user daily AI quota. Service role only.
+- [`20261111121000_review_card_rpc.sql`](./supabase/migrations/20261111121000_review_card_rpc.sql): `review_card()` writes a rating and its log in one transaction (`SECURITY INVOKER`, existing RLS applies).
+- [`20261111122000_decks_updated_at_and_user_cascade.sql`](./supabase/migrations/20261111122000_decks_updated_at_and_user_cascade.sql): `updated_at` trigger on `decks`; deleting an auth user now cascades to their decks.
+- [`20261111123000_avatars_storage_hardening.sql`](./supabase/migrations/20261111123000_avatars_storage_hardening.sql): avatars bucket limited to PNG/JPEG/WebP ≤ 2 MB; uploads only into `<user id>/`.
+
+Each of these is additive and deletes no data. The client and the Edge Function
+fall back gracefully while the first two are not applied yet. The avatars
+migration needs the matching client deployed first (or together), because the
+old client uploads to the bucket root.
 
 All tables have RLS enabled with policies restricting access to rows owned by
 `auth.uid() = user_id`.
