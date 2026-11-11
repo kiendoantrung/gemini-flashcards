@@ -231,6 +231,21 @@ an authenticated Supabase session, validates its input, and calls the
 `gemini-3.5-flash-lite` model. Inspect deployed functions in the
 [Supabase Dashboard](https://supabase.com/dashboard/project/_/functions).
 
+Optional secrets:
+
+| Secret | Default | Purpose |
+|---|---|---|
+| `GOOGLE_AI_KEY_2` … `GOOGLE_AI_KEY_10` | — | Extra Gemini keys. A key is only skipped when Gemini answers 429 or rejects the key; a provider-wide 503 is retried on the same key. |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Switch models without redeploying. |
+| `AI_DAILY_REQUEST_LIMIT` | `150` | AI requests per user per UTC day (needs the `ai_usage_quota` migration). |
+
+The function retries Gemini itself (at most 3 attempts for transient errors,
+90 s total budget); the client never retries an HTTP error from it. PDFs are
+limited to 15 MB (`src/config/limits.ts` and `supabase/functions/generate-flashcards/lib.ts`
+must stay in sync). Its pure logic lives in `lib.ts` and is tested with
+`deno test supabase/functions`, which CI runs together with `deno check` and
+`deno lint`.
+
 > [!CAUTION]
 > Do not expose `GOOGLE_AI_KEY` in frontend code, `.env`, or a `VITE_*`
 > variable. Store it only in Supabase Secrets.

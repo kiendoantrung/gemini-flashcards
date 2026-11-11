@@ -1,25 +1,35 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { GoogleGenAI } from "https://esm.sh/@google/genai@1.11.0";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
+import { GoogleGenAI } from "npm:@google/genai@1.11.0";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.46.1";
+import {
+  AttemptTimeoutError,
+  createApiKeyState,
+  DEFAULT_RETRY_OPTIONS,
+  FunctionError,
+  generateWithRetry,
+  isRecord,
+  MAX_DECK_DESCRIPTION_CHARS,
+  MAX_DECK_TITLE_CHARS,
+  MAX_REQUEST_BODY_BYTES,
+  normalizeDistractors,
+  normalizeFlashcards,
+  parseAIResponse,
+  parseDailyLimit,
+  parseRequestBody,
+  quotaExceededError,
+  requestError,
+  requireAIString,
+  aiResponseError,
+  type ValidatedFlashcardRequest,
+} from "./lib.ts";
 
 // ============================================================================
-// Constants
+// Configuration
 // ============================================================================
 
-const MODEL_NAME = "gemini-3.5-flash-lite";
-const DEFAULT_NUM_QUESTIONS = 10;
-const MAX_NUM_QUESTIONS = 50;
-const MIN_NUM_QUESTIONS = 1;
-const MAX_PDF_SIZE_BYTES = 50 * 1024 * 1024;
-const MAX_PDF_BASE64_LENGTH = Math.ceil(MAX_PDF_SIZE_BYTES / 3) * 4;
-const MAX_REQUEST_BODY_BYTES = MAX_PDF_BASE64_LENGTH + 64 * 1024;
-const MAX_TOPIC_BYTES = 1_000;
-const MAX_TEXT_BYTES = 500_000;
-const MAX_CARD_COUNT = 50;
-const MAX_CARD_ID_BYTES = 128;
-const MAX_CARD_TEXT_BYTES = 5_000;
-const MAX_DECK_TITLE_BYTES = 500;
-const MAX_DECK_DESCRIPTION_BYTES = 2_000;
+/** Override with the GEMINI_MODEL secret to switch models without a deploy. */
+const MODEL_NAME = Deno.env.get("GEMINI_MODEL")?.trim() || "gemini-3.5-flash-lite";
+
+const DAILY_AI_REQUEST_LIMIT = parseDailyLimit(Deno.env.get("AI_DAILY_REQUEST_LIMIT"));
 
 const configuredOrigins = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
   .split(",")
@@ -32,95 +42,22 @@ if (configuredOrigins.length === 0) {
   );
 }
 
-// Retry configuration
-const MAX_RETRIES = 3;
-const INITIAL_DELAY_MS = 1000;
-const MAX_DELAY_MS = 10000;
-
-// ============================================================================
-// API Key Management
-// ============================================================================
-
 /**
- * Get all available API keys from environment variables
- * Supports: GOOGLE_AI_KEY, GOOGLE_AI_KEY_2, GOOGLE_AI_KEY_3, etc.
+ * All available Gemini keys: GOOGLE_AI_KEY, GOOGLE_AI_KEY_2 … GOOGLE_AI_KEY_10.
  */
 function getApiKeys(): string[] {
   const keys: string[] = [];
-  
-  // Primary key
   const primaryKey = Deno.env.get("GOOGLE_AI_KEY");
   if (primaryKey) keys.push(primaryKey);
-  
-  // Additional keys (up to 10)
   for (let i = 2; i <= 10; i++) {
     const key = Deno.env.get(`GOOGLE_AI_KEY_${i}`);
     if (key) keys.push(key);
   }
-  
   return keys;
 }
 
-interface ApiKeyState {
-  failedKeyIndices: Set<number>;
-  currentKeyIndex: number;
-}
-
-function createApiKeyState(): ApiKeyState {
-  return {
-    failedKeyIndices: new Set<number>(),
-    currentKeyIndex: -1,
-  };
-}
-
-/**
- * Get the next available API key (round-robin with failover)
- */
-function getNextApiKey(
-  keys: string[],
-  state: ApiKeyState
-): { key: string; index: number } | null {
-  const availableKeys = keys.filter((_, idx) => !state.failedKeyIndices.has(idx));
-  
-  if (availableKeys.length === 0) {
-    return null;
-  }
-  
-  // Round-robin selection among available keys
-  state.currentKeyIndex = (state.currentKeyIndex + 1) % keys.length;
-
-  // Skip failed keys
-  while (state.failedKeyIndices.has(state.currentKeyIndex)) {
-    state.currentKeyIndex = (state.currentKeyIndex + 1) % keys.length;
-  }
-
-  return { key: keys[state.currentKeyIndex], index: state.currentKeyIndex };
-}
-
-function markKeyAsFailed(state: ApiKeyState, index: number): void {
-  state.failedKeyIndices.add(index);
-}
-
 // ============================================================================
-// Types
-// ============================================================================
-
-type ValidatedFlashcardRequest =
-  | { action: "generateDeck"; topic: string; numQuestions: number }
-  | {
-      action: "generateDistractors";
-      cards: Array<{ id: string; front: string; back: string }>;
-    }
-  | { action: "generateFromText"; text: string; numQuestions: number }
-  | { action: "generateFromPDF"; pdfBase64: string; numQuestions: number };
-
-interface FlashcardData {
-  front: string;
-  back: string;
-}
-
-// ============================================================================
-// Response Schemas
+// Response schemas
 // ============================================================================
 
 const flashcardArraySchema = {
@@ -129,11 +66,11 @@ const flashcardArraySchema = {
     type: "object",
     properties: {
       front: { type: "string", description: "The question or front side of the flashcard" },
-      back: { type: "string", description: "The answer or back side of the flashcard" }
+      back: { type: "string", description: "The answer or back side of the flashcard" },
     },
-    required: ["front", "back"]
+    required: ["front", "back"],
   },
-  description: "Array of flashcards"
+  description: "Array of flashcards",
 };
 
 const deckSchema = {
@@ -141,194 +78,14 @@ const deckSchema = {
   properties: {
     title: { type: "string", description: "Title of the flashcard deck" },
     description: { type: "string", description: "Brief description of the topic" },
-    cards: flashcardArraySchema
+    cards: flashcardArraySchema,
   },
-  required: ["title", "description", "cards"]
+  required: ["title", "description", "cards"],
 };
 
 // ============================================================================
-// Helper Functions
+// HTTP helpers
 // ============================================================================
-
-class FunctionError extends Error {
-  readonly status: number;
-  readonly code: string;
-
-  constructor(message: string, status: number, code: string) {
-    super(message);
-    this.name = "FunctionError";
-    this.status = status;
-    this.code = code;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function requestError(message: string, status = 400): FunctionError {
-  return new FunctionError(
-    message,
-    status,
-    status === 413 ? "PAYLOAD_TOO_LARGE" : "INVALID_REQUEST",
-  );
-}
-
-function aiResponseError(message: string): FunctionError {
-  return new FunctionError(message, 502, "AI_INVALID_RESPONSE");
-}
-
-function byteLength(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
-}
-
-function requireString(
-  value: unknown,
-  fieldName: string,
-  maxBytes: number,
-): string {
-  if (typeof value !== "string") {
-    throw requestError(`${fieldName} must be a string`);
-  }
-
-  const normalized = value.trim();
-  if (!normalized) {
-    throw requestError(`${fieldName} is required`);
-  }
-  if (byteLength(normalized) > maxBytes) {
-    throw requestError(`${fieldName} is too long`);
-  }
-
-  return normalized;
-}
-
-function requireAIString(
-  value: unknown,
-  fieldName: string,
-  maxBytes: number,
-): string {
-  if (typeof value !== "string") {
-    throw aiResponseError(`AI response field "${fieldName}" must be a string`);
-  }
-
-  const normalized = value.trim();
-  if (!normalized || byteLength(normalized) > maxBytes) {
-    throw aiResponseError(`AI response field "${fieldName}" is invalid`);
-  }
-
-  return normalized;
-}
-
-function validateNumQuestions(value: unknown): number {
-  if (value === undefined) return DEFAULT_NUM_QUESTIONS;
-  if (
-    typeof value !== "number" ||
-    !Number.isInteger(value) ||
-    value < MIN_NUM_QUESTIONS ||
-    value > MAX_NUM_QUESTIONS
-  ) {
-    throw requestError(
-      `numQuestions must be an integer between ${MIN_NUM_QUESTIONS} and ${MAX_NUM_QUESTIONS}`,
-    );
-  }
-  return value;
-}
-
-function validateCards(
-  value: unknown,
-): Array<{ id: string; front: string; back: string }> {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw requestError("cards must be a non-empty array");
-  }
-  if (value.length > MAX_CARD_COUNT) {
-    throw requestError(`cards cannot contain more than ${MAX_CARD_COUNT} items`);
-  }
-
-  const ids = new Set<string>();
-  return value.map((card, index) => {
-    if (!isRecord(card)) {
-      throw requestError(`cards[${index}] must be an object`);
-    }
-
-    const id = requireString(card.id, `cards[${index}].id`, MAX_CARD_ID_BYTES);
-    if (!/^[A-Za-z0-9_-]+$/.test(id)) {
-      throw requestError(`cards[${index}].id contains unsupported characters`);
-    }
-    if (ids.has(id)) {
-      throw requestError(`cards contains duplicate id "${id}"`);
-    }
-    ids.add(id);
-
-    return {
-      id,
-      front: requireString(card.front, `cards[${index}].front`, MAX_CARD_TEXT_BYTES),
-      back: requireString(card.back, `cards[${index}].back`, MAX_CARD_TEXT_BYTES),
-    };
-  });
-}
-
-function validatePdfBase64(value: unknown): string {
-  if (typeof value !== "string" || !value) {
-    throw requestError("pdfBase64 is required");
-  }
-  if (
-    value.length > MAX_PDF_BASE64_LENGTH ||
-    value.length % 4 !== 0 ||
-    !/^[A-Za-z0-9+/]*={0,2}$/.test(value)
-  ) {
-    throw requestError("pdfBase64 is not valid base64 or is too large");
-  }
-
-  validatePdfBase64Size(value);
-  return value;
-}
-
-async function parseRequest(req: Request): Promise<ValidatedFlashcardRequest> {
-  const contentLength = Number(req.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
-    throw requestError("Request payload is too large", 413);
-  }
-
-  const rawBody = await req.text();
-  if (byteLength(rawBody) > MAX_REQUEST_BODY_BYTES) {
-    throw requestError("Request payload is too large", 413);
-  }
-
-  let payload: unknown;
-  try {
-    payload = JSON.parse(rawBody);
-  } catch {
-    throw requestError("Request body must be valid JSON");
-  }
-  if (!isRecord(payload)) {
-    throw requestError("Request body must be a JSON object");
-  }
-
-  switch (payload.action) {
-    case "generateDeck":
-      return {
-        action: payload.action,
-        topic: requireString(payload.topic, "topic", MAX_TOPIC_BYTES),
-        numQuestions: validateNumQuestions(payload.numQuestions),
-      };
-    case "generateDistractors":
-      return { action: payload.action, cards: validateCards(payload.cards) };
-    case "generateFromText":
-      return {
-        action: payload.action,
-        text: requireString(payload.text, "text", MAX_TEXT_BYTES),
-        numQuestions: validateNumQuestions(payload.numQuestions),
-      };
-    case "generateFromPDF":
-      return {
-        action: payload.action,
-        pdfBase64: validatePdfBase64(payload.pdfBase64),
-        numQuestions: validateNumQuestions(payload.numQuestions),
-      };
-    default:
-      throw requestError("action must be one of the supported generation actions");
-  }
-}
 
 function getCorsHeaders(req: Request): HeadersInit {
   const origin = req.headers.get("origin");
@@ -352,262 +109,93 @@ function isAllowedOrigin(req: Request): boolean {
   return !origin || configuredOrigins.includes(origin);
 }
 
-/**
- * Creates a JSON response with CORS headers
- */
-function jsonResponse(data: unknown, status = 200, req?: Request): Response {
+function jsonResponse(data: unknown, status: number, req: Request): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      ...getCorsHeaders(req ?? new Request("http://localhost")),
-      "Content-Type": "application/json",
-    },
+    headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
   });
 }
 
 /**
- * Creates an error response with CORS headers
+ * Error contract: every failure is `{ error: string, code: string }` with a
+ * matching HTTP status. `error` is safe to show to end users for the codes
+ * the client passes through (see src/services/generateClient.ts).
  */
 function errorResponse(error: unknown, req: Request): Response {
-  console.error("Edge function error:", error);
-
   if (error instanceof FunctionError) {
+    // 4xx are expected (validation, quota); keep the logs for real failures.
+    if (error.status >= 500) console.error("Edge function error:", error);
     return jsonResponse({ error: error.message, code: error.code }, error.status, req);
   }
 
-  return jsonResponse(
-    { error: "Internal server error", code: "INTERNAL_ERROR" },
-    500,
-    req,
-  );
+  console.error("Edge function error:", error);
+  return jsonResponse({ error: "Internal server error", code: "INTERNAL_ERROR" }, 500, req);
 }
 
-/**
- * Validates the decoded PDF size. Gemini accepts PDFs up to 50 MB; validating
- * here also protects the Edge Function when it is called outside the client.
- */
-function validatePdfBase64Size(pdfBase64: string): void {
-  const padding = pdfBase64.endsWith('==') ? 2 : pdfBase64.endsWith('=') ? 1 : 0;
-  const decodedSize = Math.floor((pdfBase64.length * 3) / 4) - padding;
-
-  if (decodedSize > MAX_PDF_SIZE_BYTES) {
-    throw requestError("PDF files must be 50 MB or smaller", 413);
+async function readRequest(req: Request): Promise<ValidatedFlashcardRequest> {
+  const contentLength = Number(req.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+    throw requestError("Request payload is too large", 413);
   }
+  return parseRequestBody(await req.text());
 }
 
-/**
- * Parses AI response text as JSON with error handling
- */
-function parseAIResponse(responseText: string | undefined): unknown {
-  if (!responseText) {
-    throw aiResponseError("Empty response from AI model");
-  }
-  try {
-    return JSON.parse(responseText) as unknown;
-  } catch {
-    throw aiResponseError("Failed to parse AI response as JSON");
-  }
-}
+// ============================================================================
+// Gemini
+// ============================================================================
 
-/**
- * Normalizes flashcard data from various response formats
- */
-function normalizeFlashcards(data: unknown, maxCards = MAX_NUM_QUESTIONS): FlashcardData[] {
-  let cards: unknown[];
-
-  if (Array.isArray(data)) {
-    cards = data;
-  } else if (isRecord(data)) {
-    const obj = data;
-    if (Array.isArray(obj.cards)) {
-      cards = obj.cards;
-    } else if (Array.isArray(obj.flashcards)) {
-      cards = obj.flashcards;
-    } else {
-      throw aiResponseError("Invalid response format: expected array of flashcards");
-    }
-  } else {
-    throw aiResponseError("Invalid response format: expected array of flashcards");
-  }
-
-  if (cards.length === 0 || cards.length > maxCards) {
-    throw aiResponseError("AI returned an invalid number of flashcards");
-  }
-
-  return cards.map((card: unknown, index) => {
-    if (!isRecord(card)) {
-      throw aiResponseError(`AI response card ${index + 1} is invalid`);
-    }
-
-    const frontValue = card.front ?? card.question ?? card.q;
-    const backValue = card.back ?? card.answer ?? card.a;
-    return {
-      front: requireAIString(frontValue, `cards[${index}].front`, MAX_CARD_TEXT_BYTES),
-      back: requireAIString(backValue, `cards[${index}].back`, MAX_CARD_TEXT_BYTES),
-    };
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new AttemptTimeoutError()), ms);
   });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-/** Only transient provider/network failures may be retried. */
-function getErrorStatus(error: unknown): number | null {
-  if (!error || typeof error !== "object") return null;
-  const errorRecord = error as Record<string, unknown>;
-  const status = errorRecord.status ?? errorRecord.statusCode;
-  return typeof status === "number" ? status : null;
-}
-
-function isRetryableError(error: unknown): boolean {
-  const status = getErrorStatus(error);
-  if (status !== null) {
-    return [429, 500, 502, 503, 504].includes(status);
-  }
-
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    return (
-      message.includes("overloaded") ||
-      message.includes("temporarily unavailable") ||
-      message.includes("timeout") ||
-      message.includes("network") ||
-      message.includes("internal server error")
-    );
-  }
-  return false;
-}
-
-/**
- * Delay helper for retry logic
- */
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Generates content using Gemini AI with retry logic and key rotation
- */
 async function generateContent(
   apiKeys: string[],
   prompt: string,
   schema: Record<string, unknown>,
-  inlineData?: { mimeType: string; data: string }
+  inlineData?: { mimeType: string; data: string },
 ): Promise<string> {
-  const contents = inlineData
-    ? [{ text: prompt }, { inlineData }]
-    : prompt;
+  const contents = inlineData ? [{ text: prompt }, { inlineData }] : prompt;
 
-  let lastError: Error | null = null;
-  const keyState = createApiKeyState();
+  // Start at a random key so concurrent requests spread across keys instead
+  // of all hammering key 1 first.
+  const keyState = createApiKeyState(Math.floor(Math.random() * apiKeys.length) - 1);
 
-  // Try each available API key
-  while (true) {
-    const keyInfo = getNextApiKey(apiKeys, keyState);
-    
-    if (!keyInfo) {
-      // All keys have failed
-      break;
-    }
-
-    const genAI = new GoogleGenAI({ apiKey: keyInfo.key });
-    
-    // Retry with exponential backoff for this key
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const result = await genAI.models.generateContent({
-          model: MODEL_NAME,
-          contents,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: schema,
-          },
-        });
-
-        return result.text || "";
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        
-        // Check if we should try another key
-        const shouldSwitchKey = isRetryableError(error) && 
-          (lastError.message.toLowerCase().includes("quota") ||
-           lastError.message.toLowerCase().includes("rate limit") ||
-           lastError.message.toLowerCase().includes("429"));
-        
-        if (shouldSwitchKey) {
-          console.warn(`API key ${keyInfo.index + 1} hit rate limit, switching to next key...`);
-          markKeyAsFailed(keyState, keyInfo.index);
-          break; // Try next key
-        }
-        
-        if (!isRetryableError(error) || attempt === MAX_RETRIES) {
-          // For non-retryable errors or max retries reached, mark key as failed
-          markKeyAsFailed(keyState, keyInfo.index);
-          break;
-        }
-
-        // Exponential backoff with jitter
-        const backoffDelay = Math.min(
-          INITIAL_DELAY_MS * Math.pow(2, attempt - 1) + Math.random() * 500,
-          MAX_DELAY_MS
-        );
-        
+  return await generateWithRetry(
+    apiKeys,
+    async (apiKey) => {
+      const genAI = new GoogleGenAI({ apiKey });
+      const result = await genAI.models.generateContent({
+        model: MODEL_NAME,
+        contents,
+        config: { responseMimeType: "application/json", responseSchema: schema },
+      });
+      return result.text || "";
+    },
+    {
+      ...DEFAULT_RETRY_OPTIONS,
+      now: () => Date.now(),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      withTimeout,
+      onRetry: ({ keyIndex, kind, error }) => {
         console.warn(
-          `AI request failed (key ${keyInfo.index + 1}, attempt ${attempt}/${MAX_RETRIES}). Retrying in ${Math.round(backoffDelay)}ms...`,
-          lastError.message
+          `AI request failed (key ${keyIndex + 1}, ${kind}):`,
+          error instanceof Error ? error.message : error,
         );
-        
-        await delay(backoffDelay);
-      }
-    }
-  }
-
-  // Provide user-friendly error messages
-  if (lastError) {
-    const message = lastError.message.toLowerCase();
-    const status = getErrorStatus(lastError);
-    if (
-      status === 503 ||
-      status === 500 ||
-      status === 502 ||
-      status === 504 ||
-      message.includes("overloaded") ||
-      message.includes("503") ||
-      message.includes("unavailable")
-    ) {
-      throw new FunctionError(
-        "AI service is currently busy. Please wait a moment and try again.",
-        503,
-        "AI_UNAVAILABLE",
-      );
-    }
-    if (
-      status === 429 ||
-      message.includes("429") ||
-      message.includes("rate limit") ||
-      message.includes("quota")
-    ) {
-      throw new FunctionError(
-        "Too many requests. Please wait a minute and try again.",
-        429,
-        "AI_RATE_LIMITED",
-      );
-    }
-  }
-
-  throw new FunctionError("Failed to generate content", 502, "AI_GENERATION_FAILED");
+      },
+    },
+    keyState,
+  );
 }
 
 // ============================================================================
-// Action Handlers
+// Action handlers
 // ============================================================================
 
-/**
- * Generates a flashcard deck from a topic
- */
-async function handleGenerateDeck(
-  apiKeys: string[],
-  topic: string,
-  numQuestions: number,
-  req: Request,
-): Promise<Response> {
+async function handleGenerateDeck(apiKeys: string[], topic: string, numQuestions: number) {
   const prompt = `Create a set of ${numQuestions} flashcards about "${topic}".
 
 RULES:
@@ -616,56 +204,34 @@ RULES:
 - Answers should be concise but complete (1-3 sentences)
 - Return a JSON object with: title (string), description (string), and cards (array of objects with front and back properties)`;
 
-  const responseText = await generateContent(apiKeys, prompt, deckSchema as Record<string, unknown>);
-  let parsedData = parseAIResponse(responseText);
+  let parsedData = parseAIResponse(await generateContent(apiKeys, prompt, deckSchema));
 
-  // Handle array response format
   if (Array.isArray(parsedData)) {
-    parsedData = {
-      title: topic,
-      description: `Flashcards about ${topic}`,
-      cards: parsedData,
-    };
+    parsedData = { title: topic, description: `Flashcards about ${topic}`, cards: parsedData };
   }
 
-  // Validate the response structure
   if (!isRecord(parsedData) || !Array.isArray(parsedData.cards)) {
     throw aiResponseError("Invalid deck structure in AI response");
   }
-  const title = requireAIString(parsedData.title, "title", MAX_DECK_TITLE_BYTES);
+  const title = requireAIString(parsedData.title, "title", { chars: MAX_DECK_TITLE_CHARS });
   const description = parsedData.description === undefined
     ? `Flashcards about ${topic}`
-    : requireAIString(parsedData.description, "description", MAX_DECK_DESCRIPTION_BYTES);
+    : requireAIString(parsedData.description, "description", { chars: MAX_DECK_DESCRIPTION_CHARS });
   const cards = normalizeFlashcards(parsedData.cards, numQuestions);
 
-  // Generate IDs for the deck and cards
-  const deck = {
+  return {
     id: crypto.randomUUID(),
     title,
     description,
-    cards: cards.map((card) => ({
-      id: crypto.randomUUID(),
-      front: card.front,
-      back: card.back,
-    })),
+    cards: cards.map((card) => ({ id: crypto.randomUUID(), front: card.front, back: card.back })),
   };
-
-  return jsonResponse(deck, 200, req);
 }
 
-/**
- * Generates distractors for quiz mode
- */
 async function handleGenerateDistractors(
   apiKeys: string[],
   cards: Array<{ id: string; front: string; back: string }>,
-  req: Request,
-): Promise<Response> {
-  const cardsList = cards.map((c) => ({
-    id: c.id,
-    question: c.front,
-    answer: c.back,
-  }));
+) {
+  const cardsList = cards.map((c) => ({ id: c.id, question: c.front, answer: c.back }));
 
   const prompt = `Generate 3 plausible but INCORRECT answer choices (distractors) for each flashcard.
 
@@ -678,64 +244,23 @@ RULES:
 Cards:
 ${JSON.stringify(cardsList, null, 2)}`;
 
-  // Dynamic schema based on card IDs
-  const dynamicSchemaProperties: Record<string, unknown> = {};
-  cards.forEach(card => {
-    dynamicSchemaProperties[card.id] = {
+  const properties: Record<string, unknown> = {};
+  for (const card of cards) {
+    properties[card.id] = {
       type: "array",
       items: { type: "string" },
-      description: `3 distractors for card: ${card.front}`
+      description: `3 distractors for card: ${card.front}`,
     };
-  });
-
-  const responseSchema = {
-    type: "object",
-    properties: dynamicSchemaProperties,
-    required: cards.map(c => c.id)
-  };
-
-  const responseText = await generateContent(apiKeys, prompt, responseSchema);
-  const distractors = parseAIResponse(responseText);
-  if (!isRecord(distractors)) {
-    throw aiResponseError("AI returned an invalid distractor response");
   }
+  const responseSchema = { type: "object", properties, required: cards.map((c) => c.id) };
 
-  // Validate and ensure all cards have distractors
-  const validatedDistractors: Record<string, string[]> = {};
-  for (const card of cards) {
-    const cardDistractors = distractors[card.id];
-    if (!Array.isArray(cardDistractors)) {
-      throw aiResponseError(`AI did not return distractors for card ${card.id}`);
-    }
-
-    const uniqueDistractors: string[] = [];
-    for (const distractor of cardDistractors) {
-      const value = requireAIString(distractor, `distractors.${card.id}`, MAX_CARD_TEXT_BYTES);
-      if (value.toLocaleLowerCase() === card.back.toLocaleLowerCase()) continue;
-      if (!uniqueDistractors.some((item) => item.toLocaleLowerCase() === value.toLocaleLowerCase())) {
-        uniqueDistractors.push(value);
-      }
-    }
-
-    if (uniqueDistractors.length < 3) {
-      throw aiResponseError(`AI returned fewer than 3 valid distractors for card ${card.id}`);
-    }
-
-    validatedDistractors[card.id] = uniqueDistractors.slice(0, 3);
-  }
-
-  return jsonResponse(validatedDistractors, 200, req);
+  return normalizeDistractors(
+    parseAIResponse(await generateContent(apiKeys, prompt, responseSchema)),
+    cards,
+  );
 }
 
-/**
- * Generates flashcards from text content
- */
-async function handleGenerateFromText(
-  apiKeys: string[],
-  text: string,
-  numQuestions: number,
-  req: Request,
-): Promise<Response> {
+async function handleGenerateFromText(apiKeys: string[], text: string, numQuestions: number) {
   const prompt = `Create ${numQuestions} flashcard questions and answers from this text.
 
 RULES:
@@ -749,22 +274,13 @@ RULES:
 Source text:
 ${text}`;
 
-  const responseText = await generateContent(apiKeys, prompt, flashcardArraySchema as Record<string, unknown>);
-  const parsedData = parseAIResponse(responseText);
-  const cards = normalizeFlashcards(parsedData, numQuestions);
-
-  return jsonResponse(cards, 200, req);
+  return normalizeFlashcards(
+    parseAIResponse(await generateContent(apiKeys, prompt, flashcardArraySchema)),
+    numQuestions,
+  );
 }
 
-/**
- * Generates flashcards from PDF content
- */
-async function handleGenerateFromPDF(
-  apiKeys: string[],
-  pdfBase64: string,
-  numQuestions: number,
-  req: Request,
-): Promise<Response> {
+async function handleGenerateFromPDF(apiKeys: string[], pdfBase64: string, numQuestions: number) {
   const prompt = `Create ${numQuestions} flashcard questions and answers from this PDF document.
 
 RULES:
@@ -775,33 +291,41 @@ RULES:
 - Avoid duplicate or overlapping questions
 - Return a JSON array of objects, each with "front" (question) and "back" (answer) properties`;
 
-  const responseText = await generateContent(
-    apiKeys,
-    prompt,
-    flashcardArraySchema as Record<string, unknown>,
-    { mimeType: "application/pdf", data: pdfBase64 }
-  );
-  const parsedData = parseAIResponse(responseText);
-  const cards = normalizeFlashcards(parsedData, numQuestions);
-
-  return jsonResponse(cards, 200, req);
+  const responseText = await generateContent(apiKeys, prompt, flashcardArraySchema, {
+    mimeType: "application/pdf",
+    data: pdfBase64,
+  });
+  return normalizeFlashcards(parseAIResponse(responseText), numQuestions);
 }
 
 // ============================================================================
-// Main Handler
+// Auth and quota
 // ============================================================================
 
-async function authenticateRequest(req: Request): Promise<void> {
-  const authorization = req.headers.get("authorization");
-  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+const supabaseUrl = Deno.env.get("SUPABASE_URL");
+const supabaseAnonKey =
+  Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+const clientOptions = { auth: { autoRefreshToken: false, persistSession: false } };
+const authClient: SupabaseClient | null = supabaseUrl && supabaseAnonKey
+  ? createClient(supabaseUrl, supabaseAnonKey, clientOptions)
+  : null;
+const adminClient: SupabaseClient | null = supabaseUrl && supabaseServiceKey
+  ? createClient(supabaseUrl, supabaseServiceKey, clientOptions)
+  : null;
+
+if (!adminClient) {
+  console.warn("SUPABASE_SERVICE_ROLE_KEY is not available; per-user AI quota is disabled");
+}
+
+/** Returns the caller's user id. */
+async function authenticateRequest(req: Request): Promise<string> {
+  const match = req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i);
   if (!match) {
     throw new FunctionError("Authentication required", 401, "AUTH_REQUIRED");
   }
-
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseKey =
-    Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
-  if (!supabaseUrl || !supabaseKey) {
+  if (!authClient) {
     throw new FunctionError(
       "Authentication service is not configured",
       500,
@@ -809,17 +333,43 @@ async function authenticateRequest(req: Request): Promise<void> {
     );
   }
 
-  const supabase = createClient(supabaseUrl, supabaseKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-  const { data, error } = await supabase.auth.getUser(match[1]);
+  const { data, error } = await authClient.auth.getUser(match[1]);
   if (error || !data.user) {
     throw new FunctionError("Invalid or expired authentication token", 401, "AUTH_INVALID");
   }
+  return data.user.id;
 }
 
-serve(async (req: Request) => {
-  // Handle CORS preflight requests
+/**
+ * Counts one AI request against the caller's daily quota.
+ *
+ * Fails open: if the quota table or function is missing (the migration has
+ * not been applied yet) or the database is unreachable, the request is
+ * allowed and the problem is logged. Blocking every generation for every
+ * user because of a bookkeeping failure would be the worse outage.
+ */
+async function consumeDailyQuota(userId: string): Promise<void> {
+  if (!adminClient) return;
+
+  const { data, error } = await adminClient.rpc("consume_ai_quota", {
+    p_user_id: userId,
+    p_daily_limit: DAILY_AI_REQUEST_LIMIT,
+  });
+
+  if (error) {
+    console.error("AI quota check failed; allowing request:", error.message);
+    return;
+  }
+  if (data === null) {
+    throw quotaExceededError(DAILY_AI_REQUEST_LIMIT);
+  }
+}
+
+// ============================================================================
+// Main handler
+// ============================================================================
+
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     if (!isAllowedOrigin(req)) {
       return jsonResponse({ error: "Origin not allowed", code: "ORIGIN_NOT_ALLOWED" }, 403, req);
@@ -837,38 +387,38 @@ serve(async (req: Request) => {
 
     // verify_jwt remains enabled in supabase/config.toml. This explicit check
     // also protects local/self-hosted deployments where the gateway is absent.
-    await authenticateRequest(req);
+    const userId = await authenticateRequest(req);
+    const request = await readRequest(req);
 
-    const request = await parseRequest(req);
-
-    // Get all available API keys
     const apiKeys = getApiKeys();
     if (apiKeys.length === 0) {
-      throw new FunctionError(
-        "AI service is not configured",
-        503,
-        "AI_CONFIGURATION_ERROR",
-      );
+      throw new FunctionError("AI service is not configured", 503, "AI_CONFIGURATION_ERROR");
     }
 
-    console.log(`Using ${apiKeys.length} API key(s) for load balancing`);
+    // After validation, so malformed requests do not burn the user's quota.
+    await consumeDailyQuota(userId);
 
     switch (request.action) {
-      case "generateDeck": {
-        return await handleGenerateDeck(apiKeys, request.topic, request.numQuestions, req);
-      }
-
-      case "generateDistractors": {
-        return await handleGenerateDistractors(apiKeys, request.cards, req);
-      }
-
-      case "generateFromText": {
-        return await handleGenerateFromText(apiKeys, request.text, request.numQuestions, req);
-      }
-
-      case "generateFromPDF": {
-        return await handleGenerateFromPDF(apiKeys, request.pdfBase64, request.numQuestions, req);
-      }
+      case "generateDeck":
+        return jsonResponse(
+          await handleGenerateDeck(apiKeys, request.topic, request.numQuestions),
+          200,
+          req,
+        );
+      case "generateDistractors":
+        return jsonResponse(await handleGenerateDistractors(apiKeys, request.cards), 200, req);
+      case "generateFromText":
+        return jsonResponse(
+          await handleGenerateFromText(apiKeys, request.text, request.numQuestions),
+          200,
+          req,
+        );
+      case "generateFromPDF":
+        return jsonResponse(
+          await handleGenerateFromPDF(apiKeys, request.pdfBase64, request.numQuestions),
+          200,
+          req,
+        );
     }
   } catch (error) {
     return errorResponse(error, req);
